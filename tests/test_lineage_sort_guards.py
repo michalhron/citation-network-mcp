@@ -27,7 +27,14 @@ from scopus_mcp.server import handle_call_tool, SERVER_VERSION
 # ---------------------------------------------------------------------------
 
 def _run(coro):
-    return asyncio.get_event_loop().run_until_complete(coro)
+    # Own the loop rather than relying on asyncio.get_event_loop(): any earlier
+    # test that closes or unsets the current loop would otherwise break these
+    # with "no current event loop". Matches the helper in the other test modules.
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
 
 
 def _result_text(result):

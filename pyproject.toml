@@ -32,6 +32,15 @@ dev = [
 [project.scripts]
 scopus-mcp = "scopus_mcp.server:start"
 
+[tool.pytest.ini_options]
+# 'integration' tests make real network requests against Elsevier and OpenAlex,
+# so they are deselected by default. Run them deliberately with:
+#   pytest -m integration
+markers = [
+    "integration: hits the live network; requires SCOPUS_API_KEY",
+]
+addopts = "-m 'not integration'"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

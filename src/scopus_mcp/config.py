@@ -51,7 +51,7 @@ def get_insttoken() -> Optional[str]:
     2. config.json 'insttoken' field
     Returns None when not configured.
     """
-    token = os.getenv('SCOPUS_INSTTOKEN')
+    token = os.getenv('ELSEVIER_INSTTOKEN') or os.getenv('SCOPUS_INSTTOKEN')
     if token:
         return token
     config = load_config_file()

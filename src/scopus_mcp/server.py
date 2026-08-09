@@ -28,11 +28,15 @@ from .utils import (
     _query_slug,
     fetch_oa_fulltext,
     write_fulltext_to_disk,
+    _fetch_abstract_openalex,
+    _fetch_abstract_crossref,
 )
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("scopus-mcp")
+
+SERVER_VERSION = "0.8.0"
 
 # Initialize Server
 server = Server("scopus-mcp")
@@ -309,15 +313,26 @@ async def handle_list_tools() -> list[types.Tool]:
             }
         ),
         types.Tool(
+            name="get_server_info",
+            description=(
+                "Return the server version and a health summary. "
+                "Call this to confirm which build you are talking to."
+            ),
+            inputSchema={"type": "object", "properties": {}}
+        ),
+        types.Tool(
             name="citation_lineage",
             description=(
-                "Walk the forward-citation lineage of a seed paper across multiple generations. "
-                "Generation 1 = papers that directly cite the seed; generation 2 = papers that "
-                "cite those; up to 3 generations. All papers are deduplicated globally across "
-                "generations. Output: lineage corpus written to disk as JSON (one record per "
-                "paper with scopus_id, doi, title, year, venue, generation, parents, "
-                "cited_by_count). Returns a compact inline summary; never dumps the full corpus "
-                "inline. Use max_per_node to bound API quota per paper."
+                "Walk the citation lineage of a seed paper across multiple generations. "
+                "Forward: generation 1 = papers that cite the seed; generation 2 = papers "
+                "that cite those; up to 3 generations. Backward: walks cited references. "
+                "All papers are deduplicated globally. Output: corpus written to disk as "
+                "JSON plus compact inline summary; the corpus is also returned inline as "
+                "base64 so sandboxed callers can inspect it. Use sort='citedby' (default "
+                "for forward) to collect the most-cited citers first, which gives a "
+                "meaningful citation-backbone; sort='coverDate' collects the most recent "
+                "citers first (which can produce a recency-dominated walk). "
+                "Server version is included in every response."
             ),
             inputSchema={
                 "type": "object",
@@ -358,6 +373,20 @@ async def handle_list_tools() -> list[types.Tool]:
                         ),
                         "enum": ["forward", "backward"],
                         "default": "forward"
+                    },
+                    "sort": {
+                        "type": "string",
+                        "description": (
+                            "How to rank citing papers before the max_per_node cap is "
+                            "applied (forward direction only; ignored for backward). "
+                            "'citedby' (default): highest citation count first — captures "
+                            "the high-flow backbone. "
+                            "'coverDate': most recent first — captures the current fringe "
+                            "but may produce a recency-dominated walk on high-citation seeds. "
+                            "'relevancy': Scopus relevance score."
+                        ),
+                        "enum": ["citedby", "coverDate", "relevancy"],
+                        "default": "citedby"
                     }
                 },
                 "required": ["seed_id"]
@@ -391,10 +420,23 @@ async def handle_call_tool(
             scopus_id = arguments.get("scopus_id")
             if not scopus_id:
                 raise ValueError("scopus_id is required")
-                
+
             raw_data = await client.get_abstract(scopus_id)
             details = clean_abstract_details(raw_data)
-            
+
+            # Fallback: fetch abstract from OpenAlex then Crossref when Scopus withholds it
+            if not details.get('description') and details.get('doi'):
+                doi = details['doi']
+                abstract = await _fetch_abstract_openalex(doi)
+                if abstract:
+                    details['description'] = abstract
+                    details['abstract_source'] = 'openalex'
+                else:
+                    abstract = await _fetch_abstract_crossref(doi)
+                    if abstract:
+                        details['description'] = abstract
+                        details['abstract_source'] = 'crossref'
+
             return [types.TextContent(type="text", text=str(details))]
 
         elif name == "get_author_profile":
@@ -645,6 +687,16 @@ async def handle_call_tool(
                 text += f"\n\nSkipped (no citing papers or API error): {skipped}"
             return [types.TextContent(type="text", text=text)]
 
+        elif name == "get_server_info":
+            return [types.TextContent(
+                type="text",
+                text=(
+                    f"scopus-mcp server\n"
+                    f"version: {SERVER_VERSION}\n"
+                    f"status: ok\n"
+                ),
+            )]
+
         elif name == "citation_lineage":
             seed_id_raw = arguments.get("seed_id")
             if not seed_id_raw:
@@ -656,6 +708,20 @@ async def handle_call_tool(
             direction = (arguments.get("direction") or "forward").lower()
             if direction not in ("forward", "backward"):
                 raise ValueError("direction must be 'forward' or 'backward'")
+
+            # sort controls ranking of citing papers before the max_per_node cap.
+            # Default 'citedby' for forward walks ensures the backbone (high-citation
+            # papers) is captured, not the current fringe.  Scopus API sort values:
+            # 'citedby-count', 'coverDate', 'relevancy'.
+            _SORT_MAP = {
+                'citedby':   'citedby-count',
+                'coverDate': 'coverDate',
+                'relevancy': 'relevancy',
+            }
+            sort_arg = (arguments.get("sort") or ("citedby" if direction == "forward" else "coverDate"))
+            if sort_arg not in _SORT_MAP:
+                raise ValueError(f"sort must be one of {list(_SORT_MAP)}")
+            api_sort = _SORT_MAP[sort_arg]
 
             seed_id = to_scopus_id(str(seed_id_raw))
 
@@ -694,7 +760,9 @@ async def handle_call_tool(
                 """
                 if direction == 'forward':
                     raw = await client.search_all(
-                        f"REF({to_eid(parent_id)})", max_results=max_per_node
+                        f"REF({to_eid(parent_id)})",
+                        max_results=max_per_node,
+                        sort=api_sort,
                     )
                     return [
                         {
@@ -804,6 +872,8 @@ async def handle_call_tool(
             spc_edges = mp_result['edges']
 
             # Consistent base filename for all three output files
+            import base64
+            import json as _json
             from datetime import datetime
             _ts = datetime.now().strftime('%Y%m%dT%H%M%S')
             _slug = _query_slug(f'lineage-{seed_id}')
@@ -816,6 +886,18 @@ async def handle_call_tool(
             )
             html_path = render_lineage_html(records_list, main_path_ids, seed_id, base_fname)
             png_path = render_lineage_png(records_list, main_path_ids, seed_id, base_fname)
+
+            # Inline corpus as base64 so sandboxed callers can access it
+            # without host filesystem access.
+            _corpus_payload = {
+                'seed_id': seed_id,
+                'records': records_list,
+                'main_path': main_path_ids,
+                'spc_edges': spc_edges,
+            }
+            corpus_b64 = base64.b64encode(
+                _json.dumps(_corpus_payload, ensure_ascii=False).encode('utf-8')
+            ).decode('ascii')
 
             non_seed = [r for r in records_list if r['generation'] > 0]
             top10 = sorted(
@@ -836,6 +918,43 @@ async def handle_call_tool(
                 rec = all_papers.get(nid, {})
                 mp_labels.append(_make_node_label(rec, nid))
 
+            # ── Degeneracy guard ────────────────────────────────────────────
+            # Detect and report a recency-dominated or collapsed walk so the
+            # caller is never silently misled.
+            _gen1_count  = gen_counts.get(1, 0)
+            _gen2_count  = gen_counts.get(2, 0)
+            _gen1_capped = (generations >= 2 and _gen1_count >= max_per_node)
+            _path_short  = len(main_path_ids) < 3
+            # "Recency fringe" heuristic: if ALL of the top-5 cited papers in
+            # gen-1 are from the last 2 years and have < 20 citations each.
+            import datetime as _dt
+            _current_year = _dt.datetime.now().year
+            _gen1_papers  = [r for r in non_seed if r['generation'] == 1]
+            _top5_gen1    = sorted(
+                _gen1_papers,
+                key=lambda r: int(r.get('cited_by_count') or 0),
+                reverse=True,
+            )[:5]
+            _recency_fringe = bool(
+                _top5_gen1
+                and all(
+                    int(r.get('year') or 0) >= _current_year - 1
+                    and int(r.get('cited_by_count') or 0) < 20
+                    for r in _top5_gen1
+                )
+            )
+            _degenerate = (
+                direction == 'forward'
+                and (
+                    (_gen1_capped and _gen2_count == 0)
+                    or _path_short
+                    or _recency_fringe
+                )
+            )
+
+            # SPC completeness note
+            _spc_complete = bool(spc_edges)
+
             all_fetches_failed = (
                 fetch_attempts > 0
                 and len(fetch_errors) == fetch_attempts
@@ -850,6 +969,7 @@ async def handle_call_tool(
                     f"({seed_paper.get('title', seed_id)!r}).\n"
                     f"Walk FAILED: all {len(fetch_errors)} node fetch(es) returned API errors.\n"
                     f"API calls: {api_calls}.\n"
+                    f"Server version: {SERVER_VERSION}\n"
                     f"Error: {first_err}\n"
                 )
                 if len(fetch_errors) > 1:
@@ -861,9 +981,16 @@ async def handle_call_tool(
                     f"Generations walked: {generations}. "
                     f"Papers per generation: {gen_summary or 'none (no papers found)'}.\n"
                     f"Total unique papers (excl. seed): {len(non_seed)}. "
-                    f"API calls: {api_calls}.\n"
+                    f"API calls: {api_calls}. Sort: {sort_arg}.\n"
+                    f"Server version: {SERVER_VERSION}\n"
                     f"Corpus written to: {json_path}\n"
+                    f"Corpus (base64, UTF-8 JSON): {corpus_b64}\n"
                 )
+                if not _spc_complete:
+                    text += (
+                        "SPC arc weights: NOT computed (no edges in lineage graph; "
+                        "main path is unweighted).\n"
+                    )
                 if html_path:
                     text += f"Interactive HTML: {html_path}\n"
                 if png_path:
@@ -875,6 +1002,29 @@ async def handle_call_tool(
                     )
                 elif mp_result.get('note'):
                     text += f"Main path: {mp_result['note']}\n"
+
+                if _degenerate:
+                    _reasons = []
+                    if _gen1_capped and _gen2_count == 0:
+                        _reasons.append(
+                            f"gen-1 hit the max_per_node cap ({max_per_node}) "
+                            f"and gen-2 did not expand"
+                        )
+                    if _path_short:
+                        _reasons.append(
+                            f"main_path has only {len(main_path_ids)} node(s)"
+                        )
+                    if _recency_fringe:
+                        _reasons.append(
+                            "top gen-1 papers are all recent (≤2 years old) "
+                            "with low citation counts"
+                        )
+                    text += (
+                        f"\nWARNING: forward walk appears recency-dominated or collapsed "
+                        f"({'; '.join(_reasons)}). "
+                        f"Treat the path as a recent-citer sample, not a citation backbone. "
+                        f"Consider sort='citedby' or a higher min_citing threshold.\n"
+                    )
 
                 text += "\nTop 10 most-cited papers in lineage:\n"
                 for r in top10:

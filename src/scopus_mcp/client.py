@@ -263,11 +263,47 @@ class ScopusClient:
 
     async def get_abstract(self, scopus_id: str) -> Dict[str, Any]:
         """
-        Retrieves abstract details.
+        Retrieves abstract details, trying progressively less-privileged views.
+        Returns the best available response plus diagnostic metadata.
         Endpoint: content/abstract/scopus_id/{id}
         """
         clean_id = scopus_id.replace('SCOPUS_ID:', '')
-        return await self._request('GET', f'content/abstract/scopus_id/{clean_id}', ttl=self.cache_config['abstract'])
+        endpoint = f'content/abstract/scopus_id/{clean_id}'
+        last_els_status: str = ''
+        last_http_status: int = 0
+
+        for view in ('FULL', 'META_ABS', 'META'):
+            try:
+                data = await self._request(
+                    'GET', endpoint,
+                    params={'view': view},
+                    ttl=self.cache_config['abstract'],
+                )
+                # Attach diagnostic info so callers can see what arrived
+                data['_view_used'] = view
+                data['_els_status'] = 'OK'
+                return data
+            except Exception as exc:
+                msg = str(exc)
+                # Extract ELS-Status from the error message if present
+                import re as _re
+                is_auth_error = any(s in msg for s in (
+                    'AUTHORIZATION_ERROR', 'Authentication failed', 'not authorized',
+                    '401', '403',
+                ))
+                if is_auth_error:
+                    last_els_status = 'AUTHORIZATION_ERROR'
+                    last_http_status = 401
+                    logger.info(f"Abstract view={view} denied, trying next view. Reason: {msg[:120]}")
+                    continue
+                raise
+
+        # All views failed — return a minimal error sentinel
+        return {
+            '_view_used': None,
+            '_els_status': last_els_status or 'AUTHORIZATION_ERROR',
+            '_http_status': last_http_status,
+        }
 
     async def get_author(self, author_id: str) -> Dict[str, Any]:
         """

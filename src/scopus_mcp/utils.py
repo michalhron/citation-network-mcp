@@ -1085,49 +1085,124 @@ def clean_search_results(data: Dict[str, Any]) -> List[Dict[str, Any]]:
 
     return cleaned_entries
 
+def _reconstruct_abstract_from_openalex(inverted_index: Dict[str, Any]) -> str:
+    """Reconstruct abstract text from OpenAlex abstract_inverted_index."""
+    if not inverted_index:
+        return ''
+    pos_word: Dict[int, str] = {}
+    for word, positions in inverted_index.items():
+        for pos in positions:
+            pos_word[pos] = word
+    if not pos_word:
+        return ''
+    return ' '.join(pos_word[i] for i in sorted(pos_word))
+
+
+def _strip_jats_tags(text: str) -> str:
+    """Strip JATS XML tags from Crossref abstract text."""
+    return re.sub(r'<[^>]+>', '', text).strip()
+
+
+async def _fetch_abstract_openalex(doi: str) -> Optional[str]:
+    """Fetch abstract from OpenAlex by DOI. Returns None on failure."""
+    try:
+        async with httpx.AsyncClient(timeout=15, headers={'User-Agent': 'ScopusMCP/0.8.0 (mailto:research@example.com)'}) as client:
+            r = await client.get(f'https://api.openalex.org/works/doi:{doi}')
+        if r.status_code != 200:
+            return None
+        body = r.json()
+        idx = body.get('abstract_inverted_index')
+        if idx:
+            return _reconstruct_abstract_from_openalex(idx)
+    except Exception as exc:
+        logger.debug(f"OpenAlex abstract fetch failed for doi={doi}: {exc}")
+    return None
+
+
+async def _fetch_abstract_crossref(doi: str) -> Optional[str]:
+    """Fetch abstract from Crossref by DOI. Returns None on failure."""
+    try:
+        async with httpx.AsyncClient(timeout=15, headers={'User-Agent': 'ScopusMCP/0.8.0 (mailto:research@example.com)'}) as client:
+            r = await client.get(f'https://api.crossref.org/works/{doi}')
+        if r.status_code != 200:
+            return None
+        body = r.json()
+        abstract = body.get('message', {}).get('abstract', '')
+        if abstract:
+            return _strip_jats_tags(abstract)
+    except Exception as exc:
+        logger.debug(f"Crossref abstract fetch failed for doi={doi}: {exc}")
+    return None
+
+
 def clean_abstract_details(data: Dict[str, Any]) -> Dict[str, Any]:
     """
     Extracts relevant details from the Scopus Abstract Retrieval API response.
-
-    Args:
-        data: The raw JSON response from Scopus API.
-
-    Returns:
-        A simplified dictionary containing abstract details.
+    Surfaces X-ELS-Status and HTTP status instead of silently returning None.
+    Authors are populated from dc:creator (available in META view) or authors block.
+    abstract_source indicates where the abstract came from: scopus, openalex, crossref, or none.
     """
-    # The API key can be singular or plural depending on endpoint version/context,
-    # though usually 'abstracts-retrieval-response'.
+    # Diagnostic fields injected by client.get_abstract
+    els_status = data.get('_els_status', 'OK')
+    view_used = data.get('_view_used')
+
     root = data.get('abstracts-retrieval-response') or data.get('abstract-retrieval-response')
-    
+
     if not root:
-        return {}
+        return {
+            'scopus_id': None,
+            'doi': None,
+            'title': None,
+            'description': None,
+            'abstract_source': 'none',
+            'publication_name': None,
+            'cover_date': None,
+            'cited_by_count': None,
+            'authors': [],
+            'url': None,
+            '_els_status': els_status,
+            '_view_used': view_used,
+        }
 
     coredata = root.get('coredata', {})
+
+    # Authors: prefer the fuller 'authors' block (FULL/META_ABS), fall back to dc:creator (META)
     authors_data = root.get('authors', {}).get('author', [])
-    
-    # Normalize authors to a list even if single author (API inconsistency)
+    if not authors_data:
+        creator = coredata.get('dc:creator', {})
+        if isinstance(creator, dict):
+            authors_data = creator.get('author', [])
+        elif isinstance(creator, list):
+            authors_data = creator
+
     if isinstance(authors_data, dict):
         authors_data = [authors_data]
-        
+
     authors = []
     for auth in authors_data:
         authors.append({
             'auth_id': auth.get('@auid'),
             'name': auth.get('ce:indexed-name'),
             'surname': auth.get('ce:surname'),
-            'initials': auth.get('ce:initials')
+            'initials': auth.get('ce:initials') or auth.get('ce:given-name'),
         })
+
+    description = coredata.get('dc:description')
+    abstract_source = 'scopus' if description else 'none'
 
     return {
         'scopus_id': coredata.get('dc:identifier', '').replace('SCOPUS_ID:', ''),
         'doi': coredata.get('prism:doi'),
         'title': coredata.get('dc:title'),
-        'description': coredata.get('dc:description'), # This is the abstract text
+        'description': description,
+        'abstract_source': abstract_source,
         'publication_name': coredata.get('prism:publicationName'),
         'cover_date': coredata.get('prism:coverDate'),
         'cited_by_count': coredata.get('citedby-count'),
         'authors': authors,
-        'url': next((link['@href'] for link in coredata.get('link', []) if link.get('@ref') == 'scopus'), None)
+        'url': next((link['@href'] for link in coredata.get('link', []) if link.get('@ref') == 'scopus'), None),
+        '_els_status': els_status,
+        '_view_used': view_used,
     }
 
 def clean_author_profile(data: Dict[str, Any]) -> Dict[str, Any]:

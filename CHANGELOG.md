@@ -5,6 +5,11 @@ are pushed yet (see "Release process" in ROADMAP.md).
 
 ## [Unreleased]
 
+### Added
+- `topic_landscape` `sample` option for topics larger than `max_papers`:
+  `recent` (default), `cited` (most-cited first, where influential work
+  appears) or `relevance`; the coverage line names the sample.
+
 ## [0.13.0] - 2026-09-30
 
 ### Changed

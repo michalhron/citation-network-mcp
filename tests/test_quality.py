@@ -314,3 +314,29 @@ def test_topic_landscape_marks_unranked_journals_in_mix():
     scopus.serial_titles = AsyncMock(return_value=[])
     out = _call('topic_landscape', {'query': 'x'}, scopus)
     assert out['venue_mix'] == {'journal (unranked)': {'papers': 1, 'share': 1.0}}
+
+
+
+@pytest.mark.parametrize('sample,sort,wording', [
+    ('recent', 'coverDate', 'most recent'),
+    ('cited', 'citedby-count', 'most cited'),
+    ('relevance', 'relevancy', 'most relevant'),
+])
+def test_topic_landscape_sample_order(sample, sort, wording):
+    scopus = MagicMock()
+    scopus.search_facets = AsyncMock(return_value={'search-results': {'opensearch:totalResults': '100'}})
+    scopus.search_all = AsyncMock(return_value={'search-results': {'entry': [
+        _paper('999', None, 'Conf') for _ in range(10)]}})
+    scopus.asjc_categories = AsyncMock(return_value=ASJC)
+    scopus.serial_titles = AsyncMock(return_value=[])
+    out = _call('topic_landscape', {'query': 'x', 'max_papers': 10, 'sample': sample}, scopus)
+    assert scopus.search_all.await_args.kwargs['sort'] == sort
+    assert out['coverage'] == f'{wording} 10 of 100 (10%)'
+
+
+def test_topic_landscape_rejects_unknown_sample():
+    with patch.dict(os.environ, {'SCOPUS_API_KEY': 'dummy'}):
+        from scopus_mcp import server
+    with patch.object(server, 'client', MagicMock()):
+        text = _run(server.handle_call_tool('topic_landscape', {'query': 'x', 'sample': 'random'}))[0].text
+    assert "sample must be one of" in text

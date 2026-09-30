@@ -93,8 +93,14 @@ MAX_BIBTEX = 200
 MAX_JOURNALS = 200
 # Cap on authors per search_authors call (Scopus Author Search page size).
 MAX_AUTHORS = 25
-# topic_landscape: papers analysed per call.
+# topic_landscape: papers analysed per call, and how a sample is chosen
+# when a topic has more (Scopus sort order, wording for the coverage line).
 MAX_LANDSCAPE_PAPERS = 2000
+LANDSCAPE_SAMPLES = {
+    'recent': ('coverDate', 'most recent'),
+    'cited': ('citedby-count', 'most cited'),
+    'relevance': ('relevancy', 'most relevant'),
+}
 
 # search_fulltext: results per call, and articles whose full text is analysed.
 MAX_FULLTEXT_RESULTS = 1000
@@ -332,7 +338,8 @@ async def handle_list_tools() -> list[types.Tool]:
                 "only: proceedings series such as IFAC-PapersOnLine or Procedia CIRP "
                 "also carry CiteScore ranks, and are reported separately with book "
                 "series, together with the overall mix of venue types. Large topics are "
-                f"analysed on the most recent max_papers papers (up to {MAX_LANDSCAPE_PAPERS}); "
+                f"analysed on a sample of max_papers papers (up to {MAX_LANDSCAPE_PAPERS}): most "
+                "recent by default, or most cited to see where influential work appears; "
                 "coverage is stated. Needs Scopus search entitlement."
             ),
             inputSchema={
@@ -348,6 +355,9 @@ async def handle_list_tools() -> list[types.Tool]:
                                    "description": f"Papers to analyse by quartile (default 500, max {MAX_LANDSCAPE_PAPERS})."},
                     "top_categories": {"type": "integer", "default": 15,
                                        "description": "Categories to report, largest first."},
+                    "sample": {"type": "string", "enum": ["recent", "cited", "relevance"],
+                               "default": "recent",
+                               "description": "Which papers to analyse when the topic has more than max_papers: most recent, most cited (where influential work appears), or most relevant."},
                     "journals_only": {"type": "boolean", "default": True,
                                       "description": "Count only journal papers in the quartiles; ranked conference proceedings and book series are reported separately. False counts every ranked venue."}
                 },
@@ -1250,6 +1260,9 @@ async def handle_call_tool(
             max_papers = max(1, min(int(arguments.get("max_papers", 500)), MAX_LANDSCAPE_PAPERS))
             top_n = max(1, int(arguments.get("top_categories", 15)))
             journals_only = bool(arguments.get("journals_only", True))
+            sample = arguments.get("sample") or "recent"
+            if sample not in LANDSCAPE_SAMPLES:
+                raise ValueError(f"sample must be one of {list(LANDSCAPE_SAMPLES)}")
 
             # 1. Broad subject areas over the whole result set (one request).
             facet_data = (await client.search_facets(full_query, 'subjarea(count=30)')).get('search-results') or {}
@@ -1263,7 +1276,8 @@ async def handle_call_tool(
                                   'papers': int(c.get('hitCount') or 0)})
 
             # 2. The papers themselves, for per-category quartiles.
-            raw = await client.search_all(full_query, max_results=max_papers, sort='coverDate')
+            raw = await client.search_all(full_query, max_results=max_papers,
+                                          sort=LANDSCAPE_SAMPLES[sample][0])
             entries = (raw.get('search-results') or {}).get('entry') or []
 
             # 3. Their journals' per-category percentiles.
@@ -1331,7 +1345,8 @@ async def handle_call_tool(
                 'total_papers': total,
                 'analysed_papers': sampled,
                 'coverage': ('complete' if sampled >= total else
-                             f"most recent {sampled} of {total} ({round(100 * sampled / total)}%)"),
+                             f"{LANDSCAPE_SAMPLES[sample][1]} {sampled} of {total} "
+                             f"({round(100 * sampled / total)}%)"),
                 'broad_areas_all_results': broad,
                 'categories': categories,
                 'quartiles_count': 'journal papers only' if journals_only else 'all ranked venues',

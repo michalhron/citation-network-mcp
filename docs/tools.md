@@ -155,7 +155,7 @@ Count publications per year for a query, e.g. to chart how attention to a topic 
 
 ### `topic_landscape`
 
-Where and at what prestige a topic is published. Runs a Scopus query and reports (1) papers per broad subject area over all results, and (2) per subject category, how many papers appear in Q1, Q2, Q3 and Q4 journals of that category, with the main journals. A journal can be Q1 in one category and Q3 in another, so each paper counts in every category of its journal. By default quartiles count journal papers only: proceedings series such as IFAC-PapersOnLine or Procedia CIRP also carry CiteScore ranks, and are reported separately with book series, together with the overall mix of venue types. Large topics are analysed on the most recent max_papers papers (up to 2000); coverage is stated. Needs Scopus search entitlement.
+Where and at what prestige a topic is published. Runs a Scopus query and reports (1) papers per broad subject area over all results, and (2) per subject category, how many papers appear in Q1, Q2, Q3 and Q4 journals of that category, with the main journals. A journal can be Q1 in one category and Q3 in another, so each paper counts in every category of its journal. By default quartiles count journal papers only: proceedings series such as IFAC-PapersOnLine or Procedia CIRP also carry CiteScore ranks, and are reported separately with book series, together with the overall mix of venue types. Large topics are analysed on a sample of max_papers papers (up to 2000): most recent by default, or most cited to see where influential work appears; coverage is stated. Needs Scopus search entitlement.
 
 | Parameter | Type | Default | Description |
 | --- | --- | --- | --- |
@@ -164,6 +164,7 @@ Where and at what prestige a topic is published. Runs a Scopus query and reports
 | `to_year` | integer |  | Last publication year. |
 | `max_papers` | integer | 500 | Papers to analyse by quartile (default 500, max 2000). |
 | `top_categories` | integer | 15 | Categories to report, largest first. |
+| `sample` | `recent` \| `cited` \| `relevance` | recent | Which papers to analyse when the topic has more than max_papers: most recent, most cited (where influential work appears), or most relevant. |
 | `journals_only` | boolean | True | Count only journal papers in the quartiles; ranked conference proceedings and book series are reported separately. False counts every ranked venue. |
 
 ### `get_journal_metrics` · **OpenAlex**

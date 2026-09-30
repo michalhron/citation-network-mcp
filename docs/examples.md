@@ -42,6 +42,22 @@ no Scopus subscription.
 
 `co_citation`: seeds linked by later papers that cite both, showing the field's intellectual base.
 
+## Scope a review by field and prestige
+
+> Which fields publish on organizing visions, and in which quartile of each?
+
+`topic_landscape`: papers per subject category, split into Q1–Q4 journals of that category, plus the share in unranked venues such as conference proceedings.
+
+> List the top-10% journals in Information Systems and Management Information Systems, then find their papers on digital platforms since 2018.
+
+`find_journals` with `min_percentile=90` returns the journals and a ready `SRCID(...)` fragment; `search_all` then runs `TITLE-ABS-KEY("digital platform") AND SRCID(...) AND PUBYEAR > 2017`.
+
+## Read into the text
+
+> Which Elsevier papers use "organizing vision" in their text, and do they engage with it or just cite it?
+
+`search_fulltext` with `context=true`: body mentions (separate from the reference list), where in the article they fall, and example sentences.
+
 ## Measure and cite
 
 > How has publishing on "digital transformation" grown each year since 2010?

@@ -15,12 +15,14 @@ os.environ.setdefault('SCOPUS_API_KEY', 'docs-generation')
 os.environ.setdefault('SCOPUS_DISABLE_SECRET_STORE', '1')
 
 GROUPS = [
-    ('Search and records', ['search_scopus', 'search_all', 'get_abstract_details',
+    ('Search and records', ['search_scopus', 'search_all', 'search_fulltext',
+                            'get_abstract_details',
                             'resolve_identifier', 'search_authors', 'get_author_profile',
                             'get_fulltext']),
     ('Citations', ['get_references', 'get_citing_papers']),
     ('Networks and lineage', ['bibliographic_coupling', 'co_citation', 'citation_lineage']),
-    ('Bibliometrics and bibliography', ['publication_counts', 'get_journal_metrics',
+    ('Bibliometrics and bibliography', ['publication_counts', 'topic_landscape',
+                                        'get_journal_metrics', 'find_journals',
                                         'get_bibtex']),
     ('Diagnostics', ['diagnose_connection', 'get_quota_status', 'get_server_info']),
 ]

@@ -26,6 +26,22 @@ Search Scopus (or OpenAlex with source='openalex') and page through results auto
 | `max_results` | integer | 200 | Maximum total results to fetch across all pages (default 200). Large values consume quota. |
 | `sort` | string |  | Sort order (e.g., 'coverDate', 'relevancy', 'citedby'). Defaults to 'coverDate' for Scopus, 'relevance' for OpenAlex. |
 
+### `search_fulltext`
+
+Search the full text of Elsevier (ScienceDirect) journal articles, not just titles and abstracts: finds papers that use a construct in their body without naming it up front. Needs Scopus/ScienceDirect subscriber access; covers Elsevier-published content only. With context=true, the top results' full texts are retrieved to count mentions in the body (separately from the reference list), give their positions through the article, and quote example sentences: how a paper uses the construct, not just that it does. Up to 1000 results; over 50 are written to JSON and CSV.
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `query` | string | required | ScienceDirect query; quote phrases, e.g. '"organizing vision"'. AND, OR, NOT allowed. |
+| `journal` | string |  | Restrict to a journal title, e.g. 'Information and Organization'. |
+| `from_year` | integer |  | First publication year. |
+| `to_year` | integer |  | Last publication year. |
+| `open_access_only` | boolean | False |  |
+| `max_results` | integer | 100 | Results to fetch (default 100, max 1000). |
+| `sort` | `relevance` \| `date` | relevance |  |
+| `context` | boolean | False | Analyse mentions in the top results' full texts. |
+| `max_context` | integer | 10 | Articles to analyse when context=true (default 10, max 25); one full-text request each. |
+
 ### `get_abstract_details`
 
 Retrieve full details for a specific document by Scopus ID.
@@ -137,6 +153,18 @@ Count publications per year for a query, e.g. to chart how attention to a topic 
 | `from_year` | integer |  | First year (inclusive). |
 | `to_year` | integer |  | Last year (inclusive). |
 
+### `topic_landscape`
+
+Where and at what prestige a topic is published. Runs a Scopus query and reports (1) papers per broad subject area over all results, and (2) per subject category, how many papers appear in Q1, Q2, Q3 and Q4 journals of that category, with the main journals. A journal can be Q1 in one category and Q3 in another, so each paper counts in every category of its journal. Venues without CiteScore ranks, such as conference proceedings, are reported separately. Large topics are analysed on the most recent max_papers papers (up to 2000); coverage is stated. Needs Scopus search entitlement.
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `query` | string | required | Scopus query, e.g. 'TITLE-ABS-KEY("organizing vision")'. |
+| `from_year` | integer |  | First publication year. |
+| `to_year` | integer |  | Last publication year. |
+| `max_papers` | integer | 500 | Papers to analyse by quartile (default 500, max 2000). |
+| `top_categories` | integer | 15 | Categories to report, largest first. |
+
 ### `get_journal_metrics` · **OpenAlex**
 
 Journal metrics for a list of journals, e.g. a litbaskets basket. Scopus (default): SJR, SNIP, CiteScore and CiteScore Tracker with their years, plus subject areas, from the Serial Title API. Give ISSNs, or Scopus source IDs (SRCIDs), which are mapped to ISSNs through one Scopus search each (needs search entitlement). source='openalex': OpenAlex's own measures (2-year mean citedness, h-index, i10-index), ISSNs only, no entitlement. Journals not found are listed, never dropped. Also written to CSV. At most 200 journals per call.
@@ -145,6 +173,16 @@ Journal metrics for a list of journals, e.g. a litbaskets basket. Scopus (defaul
 | --- | --- | --- | --- |
 | `issns` | list of string |  | ISSNs, with or without hyphen. |
 | `source_ids` | list of string |  | Scopus source IDs (SRCID), Scopus only. |
+
+### `find_journals`
+
+List the journals in one or more Scopus subject categories at or above a CiteScore percentile within that category: the quality cut-off for scoping a literature review (Q1 = 75, top 10% = 90). Categories are ASJC names or codes, e.g. 'Information Systems' (1710), 'Management Information Systems' (1404); ambiguous names return the candidates. Returns each journal's rank, percentile, quartile and CiteScore, a CSV, and ready-to-use Scopus query fragments SRCID(...) for search_all. Percentiles are from the latest complete CiteScore year.
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `categories` | list of string | required | ASJC category names or 4-digit codes. |
+| `min_percentile` | integer | 75 | Keep journals at or above this percentile in the category (75 = Q1, 90 = top 10%). |
+| `journals_only` | boolean | True | Exclude book series, conference proceedings and trade journals. |
 
 ### `get_bibtex`
 

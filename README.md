@@ -19,8 +19,11 @@ server, so any MCP client can use it: Claude Desktop, Claude Code, Cursor.
   GraphML for VOSviewer or Gephi.
 - 🔀 **Two data sources.** Scopus by default; add `source="openalex"` to run
   the same analyses without a Scopus subscription.
-- 📊 **Bibliometrics.** Publications per year, journal SJR/SNIP/CiteScore,
-  BibTeX for any list of papers.
+- 📊 **Bibliometrics.** Where a topic is published and in which quartile per
+  field; journals above a percentile cut-off in chosen categories; publications
+  per year; journal metrics; BibTeX for any list of papers.
+- 🔎 **Full-text search.** Find Elsevier papers that use a term in their body,
+  and see how often and where each one uses it.
 - 🩺 **Honest about access.** One call tells you which tools your current
   Scopus access supports, and why the rest fail.
 - ✅ **Tested.** 167 test functions, CI on Linux, macOS and Windows, and a
@@ -42,10 +45,10 @@ How it compares with the other Scopus MCP servers: **[comparison](docs/compariso
 
 | | |
 | --- | --- |
-| **Search and records** | `search_scopus` · `search_all` · `get_abstract_details` · `resolve_identifier` · `search_authors` · `get_author_profile` · `get_fulltext` |
+| **Search and records** | `search_scopus` · `search_all` · `search_fulltext` · `get_abstract_details` · `resolve_identifier` · `search_authors` · `get_author_profile` · `get_fulltext` |
 | **Citations** | `get_references` · `get_citing_papers` |
 | **Networks** | `bibliographic_coupling` · `co_citation` · `citation_lineage` |
-| **Bibliometrics** | `publication_counts` · `get_journal_metrics` · `get_bibtex` |
+| **Bibliometrics** | `publication_counts` · `topic_landscape` · `get_journal_metrics` · `find_journals` · `get_bibtex` |
 | **Diagnostics** | `diagnose_connection` · `get_quota_status` · `get_server_info` |
 
 Parameters and details for each: [tool reference](docs/tools.md).

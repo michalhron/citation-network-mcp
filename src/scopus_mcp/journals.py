@@ -51,9 +51,11 @@ def _float(value: Any) -> Optional[float]:
         return None
 
 
-def clean_serial_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
-    """Flatten one Serial Title entry to the metrics that matter."""
+def clean_serial_entry(entry: Dict[str, Any], names: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+    """Flatten one Serial Title entry to the metrics that matter, including
+    per-category percentiles when the entry comes from view=CITESCORE."""
     cs = entry.get('citeScoreYearInfoList') or {}
+    ranks = subject_ranks(entry, names)
     subjects = entry.get('subject-area') or []
     if isinstance(subjects, dict):
         subjects = [subjects]
@@ -74,6 +76,9 @@ def clean_serial_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
         'subject_areas': [s.get('$') for s in subjects if isinstance(s, dict) and s.get('$')],
         'coverage': (f"{entry.get('coverageStartYear')}-{entry.get('coverageEndYear')}"
                      if entry.get('coverageStartYear') else None),
+        'percentile_year': ranks['year'],
+        'category_percentiles': ranks['ranks'],
+        'best_quartile': ranks['ranks'][0]['quartile'] if ranks['ranks'] else None,
         'source': 'scopus',
     }
 
@@ -100,3 +105,109 @@ def clean_openalex_source(source: Dict[str, Any]) -> Dict[str, Any]:
         'cited_by_count': source.get('cited_by_count'),
         'source': 'openalex',
     }
+
+
+# ---------------------------------------------------------------------------
+# Subject-category percentiles (Serial Title view=CITESCORE)
+# ---------------------------------------------------------------------------
+# CiteScore ranks every journal within each ASJC subject category it belongs
+# to. A journal can be Q1 in one category and Q3 in another, so quartiles are
+# always reported per category. The latest *complete* CiteScore year is used;
+# the current year's "In-Progress" tracker changes monthly.
+
+def quartile(percentile: Optional[float]) -> Optional[str]:
+    """Q1 = 75th percentile and up, Q2 = 50-74, Q3 = 25-49, Q4 = below 25."""
+    if percentile is None:
+        return None
+    if percentile >= 75:
+        return 'Q1'
+    if percentile >= 50:
+        return 'Q2'
+    if percentile >= 25:
+        return 'Q3'
+    return 'Q4'
+
+
+def _listify(value: Any) -> List[Any]:
+    if value is None:
+        return []
+    return value if isinstance(value, list) else [value]
+
+
+def subject_ranks(entry: Dict[str, Any], names: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+    """CiteScore year and per-category rank, percentile and quartile.
+
+    names maps ASJC codes to category names; the entry's own subject-area
+    list is used first. Returns {'year': None, 'ranks': []} when the journal
+    has no complete CiteScore year (e.g. new or discontinued titles).
+    """
+    own = {str(s.get('@code')): s.get('$') for s in _listify(entry.get('subject-area'))
+           if isinstance(s, dict)}
+    years = _listify((entry.get('citeScoreYearInfoList') or {}).get('citeScoreYearInfo'))
+    complete = [y for y in years if isinstance(y, dict) and y.get('@status') == 'Complete'
+                and str(y.get('@year', '')).isdigit()]
+    if not complete:
+        return {'year': None, 'citescore': None, 'ranks': []}
+    latest = max(complete, key=lambda y: int(y['@year']))
+    infos = []
+    for block in _listify(latest.get('citeScoreInformationList')):
+        infos.extend(_listify((block or {}).get('citeScoreInfo')))
+    info = next((i for i in infos if i.get('docType') == 'all'), infos[0] if infos else {})
+    ranks = []
+    for r in _listify(info.get('citeScoreSubjectRank')):
+        try:
+            percentile = int(r.get('percentile'))
+        except (TypeError, ValueError):
+            continue
+        code = str(r.get('subjectCode'))
+        ranks.append({
+            'code': code,
+            'category': own.get(code) or (names or {}).get(code),
+            'percentile': percentile,
+            'rank': int(r['rank']) if str(r.get('rank', '')).isdigit() else None,
+            'quartile': quartile(percentile),
+        })
+    ranks.sort(key=lambda r: -r['percentile'])
+    return {'year': int(latest['@year']), 'citescore': _float(info.get('citeScore')),
+            'ranks': ranks}
+
+
+def category_names(asjc: List[Dict[str, Any]]) -> Dict[str, str]:
+    """ASJC code -> category name (the list's 'detail' field)."""
+    return {str(s.get('code')): s.get('detail') for s in asjc if s.get('code')}
+
+
+def resolve_categories(inputs: List[str], asjc: List[Dict[str, Any]]) -> List[Dict[str, str]]:
+    """Codes or names -> [{'code', 'category', 'area'}].
+
+    Accepts 4-digit ASJC codes, exact category names ('Information Systems'),
+    or a unique fragment. Similar names are common ('Information Systems',
+    'Management Information Systems', 'Information Systems and Management'),
+    so an ambiguous fragment raises with the candidates instead of guessing.
+    """
+    by_code = {str(s['code']): s for s in asjc if s.get('code')}
+    resolved = []
+    for raw in inputs:
+        text = str(raw).strip()
+        if text in by_code:
+            hit = by_code[text]
+        else:
+            exact = [s for s in asjc if (s.get('detail') or '').lower() == text.lower()]
+            partial = exact or [s for s in asjc if text.lower() in (s.get('detail') or '').lower()]
+            if len(partial) != 1:
+                if not partial:
+                    raise ValueError(f"No subject category matches {text!r}.")
+                options = '; '.join(f"{s['code']} {s['detail']} ({s['description']})"
+                                    for s in partial[:12])
+                raise ValueError(f"{text!r} matches several categories, pick one by code: {options}")
+            hit = partial[0]
+        resolved.append({'code': str(hit['code']), 'category': hit.get('detail'),
+                         'area': hit.get('description')})
+    return resolved
+
+
+def srcid_queries(source_ids: List[str], chunk: int = 100) -> List[str]:
+    """Scopus query fragments SRCID(a OR b ...), at most `chunk` IDs each, so
+    long journal lists stay within query-length limits."""
+    ids = [str(s) for s in source_ids if s]
+    return [f"SRCID({' OR '.join(ids[i:i + chunk])})" for i in range(0, len(ids), chunk)]

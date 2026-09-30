@@ -2,7 +2,7 @@
   "manifest_version": "0.4",
   "name": "citation-network-mcp",
   "display_name": "Citation Network MCP",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "description": "Citation-network analysis on Scopus or OpenAlex: search, citations, coupling, co-citation, lineages, bibliometrics.",
   "long_description": "Search the literature, trace who cites whom across generations, map research fronts and intellectual bases, and get publication counts, journal metrics and BibTeX. Scopus by default; OpenAlex needs no subscription.",
   "author": {
@@ -68,6 +68,18 @@
     {
       "name": "search_all",
       "description": "Search Scopus (or OpenAlex with source='openalex') and page through results automatically, returning up to max_results entries in one call."
+    },
+    {
+      "name": "find_journals",
+      "description": "List the journals in one or more Scopus subject categories at or above a CiteScore percentile within that category: the quality cut-off for scoping a literature review (Q1 = 75, top 10% = 90)."
+    },
+    {
+      "name": "topic_landscape",
+      "description": "Where and at what prestige a topic is published."
+    },
+    {
+      "name": "search_fulltext",
+      "description": "Search the full text of Elsevier (ScienceDirect) journal articles, not just titles and abstracts: finds papers that use a construct in their body without naming it up front."
     },
     {
       "name": "search_authors",

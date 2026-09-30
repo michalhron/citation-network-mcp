@@ -1,3 +1,4 @@
+import json
 import logging
 import asyncio
 import math
@@ -54,6 +55,10 @@ RETRYABLE_TRANSPORT_ERRORS = (
 YEARLY_CONCURRENCY = 4
 # ISSNs per Serial Title request (the API pages at 25 entries).
 SERIAL_BATCH = 25
+# Journals per page when listing a subject category, and a page cap
+# (Information Systems, 1710, has about 650 titles).
+CATEGORY_PAGE = 200
+CATEGORY_MAX_PAGES = 25
 
 # The REF view returns at most this many references per response.
 REF_PAGE = 40
@@ -79,8 +84,9 @@ CAPABILITY_TOOLS = {
                'publication_counts (Scopus)', 'search_authors (Scopus)'],
     'references': ['get_references', 'bibliographic_coupling',
                    'citation_lineage (backward)'],
-    'fulltext': ['get_fulltext (ScienceDirect step; falls back to OA/abstract)'],
-    'serial_title': ['get_journal_metrics (Scopus)'],
+    'fulltext': ['get_fulltext (ScienceDirect step; falls back to OA/abstract)',
+                 'search_fulltext'],
+    'serial_title': ['get_journal_metrics (Scopus)', 'find_journals', 'topic_landscape'],
 }
 
 class ScopusClient:
@@ -131,28 +137,36 @@ class ScopusClient:
         """Returns the latest known quota status."""
         return self.quota_info
 
-    async def _request(self, method: str, endpoint: str, params: Optional[Dict[str, Any]] = None, use_cache: bool = True, ttl: Optional[int] = None) -> Dict[str, Any]:
+    async def _request(self, method: str, endpoint: str, params: Optional[Dict[str, Any]] = None, use_cache: bool = True, ttl: Optional[int] = None, json_body: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Internal method to handle API requests with caching, rate limiting, and retries.
+        json_body is sent as a JSON request body (ScienceDirect search is a PUT).
         """
         url = urljoin(BASE_URL, endpoint)
-        
+        # GET and PUT are idempotent: safe to cache and to replay. Elsevier
+        # uses PUT for ScienceDirect search, so the body is part of the key.
+        idempotent = method.upper() in ('GET', 'PUT')
+        cache_params = params
+        if json_body is not None:
+            cache_params = {**(params or {}), '__body': json.dumps(json_body, sort_keys=True)}
+
         # Check cache (Synchronous cache access is fast enough)
-        if use_cache and method.upper() == 'GET':
-            cached = self.cache.get(url, params)
+        if use_cache and idempotent:
+            cached = self.cache.get(url, cache_params)
             if cached:
                 logger.debug(f"Cache hit for {url}")
                 return cached
 
-        # Retries apply to GET only (all Scopus endpoints here are GET);
-        # POSTs would not be safe to replay.
-        can_retry = method.upper() == 'GET'
+        can_retry = idempotent
         attempt = 1
         max_attempts = (1 + self.max_retries) if can_retry else 1
+        request_kwargs: Dict[str, Any] = {'params': params}
+        if json_body is not None:
+            request_kwargs['json'] = json_body
 
         while True:
             try:
-                response = await self.client.request(method, url, params=params)
+                response = await self.client.request(method, url, **request_kwargs)
             except RETRYABLE_TRANSPORT_ERRORS as e:
                 if attempt >= max_attempts:
                     raise Exception(
@@ -204,9 +218,9 @@ class ScopusClient:
                 response.raise_for_status()
                 data = response.json()
 
-                # Save to cache if GET
-                if use_cache and method.upper() == 'GET':
-                    self.cache.set(url, data, params, ttl=ttl)
+                # Save to cache (idempotent requests only)
+                if use_cache and idempotent:
+                    self.cache.set(url, data, cache_params, ttl=ttl)
 
                 return data
 
@@ -463,6 +477,26 @@ class ScopusClient:
         pairs = await asyncio.gather(*(count(y) for y in range(from_year, to_year + 1)))
         return dict(pairs)
 
+    async def search_facets(self, query: str, facets: str) -> Dict[str, Any]:
+        """
+        One count=1 Scopus search returning facet breakdowns over the whole
+        result set, e.g. facets='subjarea(count=30)'.
+        """
+        return await self._request(
+            'GET', 'content/search/scopus', {'query': query, 'count': 1, 'facets': facets},
+            ttl=self.cache_config['search'],
+        )
+
+    async def search_sciencedirect(self, body: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        ScienceDirect Search API v2 (PUT content/search/sciencedirect, JSON
+        body; see fulltext_search.build_request). Searches full article text
+        of Elsevier content; needs subscriber entitlement. Pages hold at most
+        100 results.
+        """
+        return await self._request('PUT', 'content/search/sciencedirect',
+                                   json_body=body, ttl=self.cache_config['search'])
+
     async def search_authors(self, query: str, count: int = 10) -> Dict[str, Any]:
         """
         Scopus Author Search (content/search/author); results come ranked by
@@ -474,7 +508,7 @@ class ScopusClient:
             ttl=self.cache_config['author'],
         )
 
-    async def serial_titles(self, issns: list) -> list:
+    async def serial_titles(self, issns: list, view: str = 'CITESCORE') -> list:
         """
         Serial Title entries for compact ISSNs, SERIAL_BATCH per request.
         ISSNs Serial Title does not know are simply absent from the result
@@ -484,14 +518,43 @@ class ScopusClient:
         """
         entries = []
         for i in range(0, len(issns), SERIAL_BATCH):
+            # view=CITESCORE is a superset of the standard view: it adds the
+            # per-category rank and percentile for each CiteScore year.
             data = await self._request(
                 'GET', 'content/serial/title',
-                {'issn': ','.join(issns[i:i + SERIAL_BATCH])},
+                {'issn': ','.join(issns[i:i + SERIAL_BATCH]), 'view': view},
                 ttl=self.cache_config['default'],
             )
             batch = (data.get('serial-metadata-response') or {}).get('entry') or []
             entries.extend(e for e in batch if isinstance(e, dict))
         return entries
+
+    async def journals_in_category(self, code: str) -> list:
+        """
+        Every serial title in an ASJC subject category, with CiteScore
+        percentiles (view=CITESCORE), CATEGORY_PAGE per request. The listing
+        has no total count, so paging stops at the first short page.
+        """
+        entries: list = []
+        for page in range(CATEGORY_MAX_PAGES):
+            data = await self._request(
+                'GET', 'content/serial/title',
+                {'subjCode': code, 'view': 'CITESCORE', 'count': CATEGORY_PAGE,
+                 'start': page * CATEGORY_PAGE},
+                ttl=self.cache_config['default'],
+            )
+            batch = [e for e in ((data.get('serial-metadata-response') or {}).get('entry') or [])
+                     if isinstance(e, dict)]
+            entries.extend(batch)
+            if len(batch) < CATEGORY_PAGE:
+                break
+        return entries
+
+    async def asjc_categories(self) -> list:
+        """The ASJC subject classification (334 categories), cached 30 days."""
+        data = await self._request('GET', 'content/subject/scopus',
+                                   ttl=self.cache_config['abstract'])
+        return ((data.get('subject-classifications') or {}).get('subject-classification')) or []
 
     async def source_id_issns(self, source_id: str) -> Optional[Dict[str, Any]]:
         """

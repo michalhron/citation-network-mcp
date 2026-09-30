@@ -13,12 +13,18 @@ from . import __version__
 from .authors import clean_openalex_author, clean_scopus_author, scopus_author_query
 from .bibtex import fetch_bibtex, generated_entry, make_keys_unique
 from .client import FULLTEXT_MIN_CHARS, ScopusClient
+from .fulltext_search import PAGE_SIZE as SD_PAGE_SIZE
+from .fulltext_search import analyze_mentions, build_request, clean_result as clean_sd_result
 from .journals import (
+    category_names,
     clean_openalex_source,
     clean_serial_entry,
     format_issn,
     normalize_issn,
+    resolve_categories,
     serial_entry_issns,
+    srcid_queries,
+    subject_ranks,
 )
 from .openalex import (
     OpenAlexClient,
@@ -86,6 +92,12 @@ MAX_BIBTEX = 200
 MAX_JOURNALS = 200
 # Cap on authors per search_authors call (Scopus Author Search page size).
 MAX_AUTHORS = 25
+# topic_landscape: papers analysed per call.
+MAX_LANDSCAPE_PAPERS = 2000
+
+# search_fulltext: results per call, and articles whose full text is analysed.
+MAX_FULLTEXT_RESULTS = 1000
+MAX_CONTEXT = 25
 
 SOURCE_SCHEMA = {
     "type": "string",
@@ -272,6 +284,102 @@ async def handle_list_tools() -> list[types.Tool]:
                         )
                     },
                     "source": SOURCE_SCHEMA
+                },
+                "required": ["query"]
+            }
+        ),
+        types.Tool(
+            name="find_journals",
+            description=(
+                "List the journals in one or more Scopus subject categories at or above "
+                "a CiteScore percentile within that category: the quality cut-off for "
+                "scoping a literature review (Q1 = 75, top 10% = 90). Categories are ASJC "
+                "names or codes, e.g. 'Information Systems' (1710), 'Management "
+                "Information Systems' (1404); ambiguous names return the candidates. "
+                "Returns each journal's rank, percentile, quartile and CiteScore, a CSV, "
+                "and ready-to-use Scopus query fragments SRCID(...) for search_all. "
+                "Percentiles are from the latest complete CiteScore year."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "categories": {
+                        "type": "array", "items": {"type": "string"},
+                        "description": "ASJC category names or 4-digit codes."
+                    },
+                    "min_percentile": {
+                        "type": "integer", "default": 75, "minimum": 0, "maximum": 99,
+                        "description": "Keep journals at or above this percentile in the category (75 = Q1, 90 = top 10%)."
+                    },
+                    "journals_only": {
+                        "type": "boolean", "default": True,
+                        "description": "Exclude book series, conference proceedings and trade journals."
+                    }
+                },
+                "required": ["categories"]
+            }
+        ),
+        types.Tool(
+            name="topic_landscape",
+            description=(
+                "Where and at what prestige a topic is published. Runs a Scopus query "
+                "and reports (1) papers per broad subject area over all results, and "
+                "(2) per subject category, how many papers appear in Q1, Q2, Q3 and Q4 "
+                "journals of that category, with the main journals. A journal can be "
+                "Q1 in one category and Q3 in another, so each paper counts in every "
+                "category of its journal. Venues without CiteScore ranks, such as "
+                "conference proceedings, are reported separately. Large topics are "
+                f"analysed on the most recent max_papers papers (up to {MAX_LANDSCAPE_PAPERS}); "
+                "coverage is stated. Needs Scopus search entitlement."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Scopus query, e.g. 'TITLE-ABS-KEY(\"organizing vision\")'."
+                    },
+                    "from_year": {"type": "integer", "description": "First publication year."},
+                    "to_year": {"type": "integer", "description": "Last publication year."},
+                    "max_papers": {"type": "integer", "default": 500,
+                                   "description": f"Papers to analyse by quartile (default 500, max {MAX_LANDSCAPE_PAPERS})."},
+                    "top_categories": {"type": "integer", "default": 15,
+                                       "description": "Categories to report, largest first."}
+                },
+                "required": ["query"]
+            }
+        ),
+        types.Tool(
+            name="search_fulltext",
+            description=(
+                "Search the full text of Elsevier (ScienceDirect) journal articles, "
+                "not just titles and abstracts: finds papers that use a construct in "
+                "their body without naming it up front. Needs Scopus/ScienceDirect "
+                "subscriber access; covers Elsevier-published content only. With "
+                "context=true, the top results' full texts are retrieved to count "
+                "mentions in the body (separately from the reference list), give "
+                "their positions through the article, and quote example sentences: "
+                "how a paper uses the construct, not just that it does. "
+                f"Up to {MAX_FULLTEXT_RESULTS} results; over 50 are written to JSON and CSV."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "ScienceDirect query; quote phrases, e.g. '\"organizing vision\"'. AND, OR, NOT allowed."
+                    },
+                    "journal": {"type": "string", "description": "Restrict to a journal title, e.g. 'Information and Organization'."},
+                    "from_year": {"type": "integer", "description": "First publication year."},
+                    "to_year": {"type": "integer", "description": "Last publication year."},
+                    "open_access_only": {"type": "boolean", "default": False},
+                    "max_results": {"type": "integer", "default": 100,
+                                    "description": f"Results to fetch (default 100, max {MAX_FULLTEXT_RESULTS})."},
+                    "sort": {"type": "string", "enum": ["relevance", "date"], "default": "relevance"},
+                    "context": {"type": "boolean", "default": False,
+                                "description": "Analyse mentions in the top results' full texts."},
+                    "max_context": {"type": "integer", "default": 10,
+                                    "description": f"Articles to analyse when context=true (default 10, max {MAX_CONTEXT}); one full-text request each."}
                 },
                 "required": ["query"]
             }
@@ -1063,6 +1171,230 @@ async def handle_call_tool(
                 f'min_shared={min_shared}, max_citing_per_seed={max_citing}',
                 skipped, 'no citing papers or API error', source, min_shared,
             )
+
+        elif name == "find_journals":
+            wanted = [str(c).strip() for c in (arguments.get("categories") or []) if str(c).strip()]
+            if not wanted:
+                raise ValueError("categories is required")
+            min_pct = int(arguments.get("min_percentile", 75))
+            if not 0 <= min_pct <= 99:
+                raise ValueError("min_percentile must be between 0 and 99")
+            journals_only = bool(arguments.get("journals_only", True))
+            asjc = await client.asjc_categories()
+            names = category_names(asjc)
+            categories = resolve_categories(wanted, asjc)
+
+            rows, per_category = [], []
+            for cat in categories:
+                entries = await client.journals_in_category(cat['code'])
+                listed = kept = unranked = 0
+                for e in entries:
+                    if journals_only and (e.get('prism:aggregationType') or '').lower() != 'journal':
+                        continue
+                    listed += 1
+                    ranks = subject_ranks(e, names)
+                    here = next((r for r in ranks['ranks'] if r['code'] == cat['code']), None)
+                    if here is None:
+                        unranked += 1
+                        continue
+                    if here['percentile'] < min_pct:
+                        continue
+                    kept += 1
+                    rows.append({
+                        'title': e.get('dc:title'), 'publisher': e.get('dc:publisher'),
+                        'issn': format_issn(normalize_issn(e.get('prism:issn'))),
+                        'eissn': format_issn(normalize_issn(e.get('prism:eIssn'))),
+                        'source_id': e.get('source-id'),
+                        'category_code': cat['code'], 'category': cat['category'],
+                        'percentile': here['percentile'], 'rank': here['rank'],
+                        'quartile': here['quartile'],
+                        'citescore': ranks['citescore'], 'citescore_year': ranks['year'],
+                    })
+                per_category.append({**cat, 'titles_listed': listed, 'without_rank': unranked,
+                                     'at_or_above_cutoff': kept})
+            rows.sort(key=lambda r: (r['category_code'], -r['percentile']))
+            unique_ids = list(dict.fromkeys(
+                r['source_id'] for r in sorted(rows, key=lambda r: -r['percentile']) if r['source_id']))
+            result = {
+                'min_percentile': min_pct,
+                'categories': per_category,
+                'unique_journals': len(unique_ids),
+                'scopus_query_fragments': srcid_queries(unique_ids),
+                'note': ("Percentile and quartile are within each category, from the latest "
+                         "complete CiteScore year. Combine a fragment with a topic query, e.g. "
+                         "TITLE-ABS-KEY(...) AND SRCID(...), in search_all."),
+            }
+            if rows:
+                result['csv_path'] = str(_write_rows_csv(rows, f'journals-p{min_pct}'))
+            if len(rows) <= 60:
+                result['journals'] = rows
+            else:
+                result['journals_sample'] = rows[:20]
+            return [types.TextContent(type="text", text=json.dumps(result, indent=2, ensure_ascii=False))]
+
+        elif name == "topic_landscape":
+            query = (arguments.get("query") or "").strip()
+            if not query:
+                raise ValueError("query is required")
+            from_year, to_year = arguments.get("from_year"), arguments.get("to_year")
+            full_query = f"({query})"
+            if from_year:
+                full_query += f" AND PUBYEAR > {int(from_year) - 1}"
+            if to_year:
+                full_query += f" AND PUBYEAR < {int(to_year) + 1}"
+            max_papers = max(1, min(int(arguments.get("max_papers", 500)), MAX_LANDSCAPE_PAPERS))
+            top_n = max(1, int(arguments.get("top_categories", 15)))
+
+            # 1. Broad subject areas over the whole result set (one request).
+            facet_data = (await client.search_facets(full_query, 'subjarea(count=30)')).get('search-results') or {}
+            total = int(facet_data.get('opensearch:totalResults') or 0)
+            broad = []
+            for f in (facet_data.get('facet') if isinstance(facet_data.get('facet'), list)
+                      else [facet_data.get('facet')] if facet_data.get('facet') else []):
+                cats = f.get('category')
+                for c in (cats if isinstance(cats, list) else [cats] if cats else []):
+                    broad.append({'area': (c.get('label') or c.get('name') or '').replace(' (all)', ''),
+                                  'papers': int(c.get('hitCount') or 0)})
+
+            # 2. The papers themselves, for per-category quartiles.
+            raw = await client.search_all(full_query, max_results=max_papers, sort='coverDate')
+            entries = (raw.get('search-results') or {}).get('entry') or []
+
+            # 3. Their journals' per-category percentiles.
+            venue = {}
+            for e in entries:
+                sid = e.get('source-id')
+                if sid and sid not in venue:
+                    venue[sid] = {'name': e.get('prism:publicationName'),
+                                  'issns': [i for i in (normalize_issn(e.get('prism:issn')),
+                                                        normalize_issn(e.get('prism:eIssn'))) if i]}
+            names = category_names(await client.asjc_categories())
+            ranks_by_sid = {}
+            issns = sorted({i for v in venue.values() for i in v['issns']})
+            for entry in (await client.serial_titles(issns) if issns else []):
+                sid = str(entry.get('source-id') or '')
+                if sid and sid not in ranks_by_sid:
+                    ranks_by_sid[sid] = subject_ranks(entry, names)
+
+            # 4. Count each paper under every category of its journal.
+            from collections import Counter
+            per_cat, unranked_venues = {}, Counter()
+            unranked = 0
+            for e in entries:
+                sid = e.get('source-id')
+                ranks = (ranks_by_sid.get(str(sid)) or {}).get('ranks') or []
+                if not ranks:
+                    unranked += 1
+                    unranked_venues[e.get('prism:publicationName') or 'unknown'] += 1
+                    continue
+                for r in ranks:
+                    c = per_cat.setdefault(r['code'], {
+                        'code': r['code'], 'category': r['category'] or names.get(r['code']),
+                        'papers': 0, 'Q1': 0, 'Q2': 0, 'Q3': 0, 'Q4': 0, '_journals': Counter()})
+                    c['papers'] += 1
+                    c[r['quartile']] += 1
+                    c['_journals'][(venue.get(sid, {}).get('name'), r['quartile'], r['percentile'])] += 1
+
+            categories = []
+            for c in sorted(per_cat.values(), key=lambda c: -c['papers'])[:top_n]:
+                journals = c.pop('_journals')
+                c['q1_share'] = round(c['Q1'] / c['papers'], 2) if c['papers'] else None
+                c['top_journals'] = [{'journal': j, 'quartile': q, 'percentile': p, 'papers': n}
+                                     for (j, q, p), n in journals.most_common(3)]
+                categories.append(c)
+
+            sampled = len(entries)
+            result = {
+                'query': full_query,
+                'total_papers': total,
+                'analysed_papers': sampled,
+                'coverage': ('complete' if sampled >= total else
+                             f"most recent {sampled} of {total} ({round(100 * sampled / total)}%)"),
+                'broad_areas_all_results': broad,
+                'categories': categories,
+                'unranked': {'papers': unranked,
+                             'share': round(unranked / sampled, 2) if sampled else None,
+                             'top_venues': [{'venue': v, 'papers': n}
+                                            for v, n in unranked_venues.most_common(5)]},
+                'notes': [
+                    "Quartiles are per category from each journal's latest complete CiteScore "
+                    "year (current standing, not standing at publication).",
+                    "A paper counts once in every category of its journal, so category "
+                    "totals add up to more than the papers analysed.",
+                    "Unranked papers appeared in venues without CiteScore ranks, typically "
+                    "conference proceedings, books or new journals.",
+                ],
+            }
+            flat = [{'category_code': c['code'], 'category': c['category'], 'papers': c['papers'],
+                     'Q1': c['Q1'], 'Q2': c['Q2'], 'Q3': c['Q3'], 'Q4': c['Q4'],
+                     'q1_share': c['q1_share']} for c in categories]
+            if flat:
+                result['csv_path'] = str(_write_rows_csv(flat, 'landscape'))
+            return [types.TextContent(type="text", text=json.dumps(result, indent=2, ensure_ascii=False))]
+
+        elif name == "search_fulltext":
+            query = (arguments.get("query") or "").strip()
+            if not query:
+                raise ValueError("query is required")
+            max_results = max(1, min(int(arguments.get("max_results", 100)), MAX_FULLTEXT_RESULTS))
+            sort = arguments.get("sort") or "relevance"
+            if sort not in ("relevance", "date"):
+                raise ValueError("sort must be 'relevance' or 'date'")
+            filters = dict(
+                journal=(arguments.get("journal") or "").strip() or None,
+                from_year=arguments.get("from_year"), to_year=arguments.get("to_year"),
+                open_access_only=bool(arguments.get("open_access_only", False)),
+            )
+
+            results, total = [], None
+            while len(results) < max_results:
+                page = await client.search_sciencedirect(build_request(
+                    query, offset=len(results),
+                    show=min(SD_PAGE_SIZE, max_results - len(results)), sort=sort, **filters))
+                if total is None:
+                    total = page.get('resultsFound')
+                batch = [clean_sd_result(e) for e in (page.get('results') or [])]
+                if not batch:
+                    break
+                results.extend(batch)
+            results = results[:max_results]
+
+            summary = {
+                'source': 'sciencedirect', 'query': query, 'total_available': total,
+                'fetched': len(results),
+                'note': "Full-text matches in Elsevier-published articles only.",
+            }
+            if arguments.get("context"):
+                limit = max(1, min(int(arguments.get("max_context", 10)), MAX_CONTEXT))
+                analysed = []
+                for rec in results[:limit]:
+                    entry = {'doi': rec['doi'], 'title': rec['title']}
+                    try:
+                        sd = await client.get_sciencedirect_fulltext(rec['doi']) if rec['doi'] else None
+                    except Exception as exc:
+                        sd = None
+                        entry['error'] = str(exc)[:200]
+                    text = ((sd or {}).get('full-text-retrieval-response') or {}).get('originalText') or ''
+                    if len(text.strip()) >= FULLTEXT_MIN_CHARS:
+                        entry.update(analyze_mentions(text, query))
+                    else:
+                        entry.setdefault('error', "full text not available with this access")
+                    analysed.append(entry)
+                summary['context'] = analysed
+                summary['context_note'] = (
+                    "body_mentions exclude the reference list; positions_pct run "
+                    "0-100 through the article before its references. The lowest "
+                    "positions can be the abstract or keyword list rather than the "
+                    "text; 0 body mentions with reference-list mentions means the "
+                    "paper cites the work without using the term.")
+
+            if should_write_to_disk(results):
+                paths = write_results_to_disk(results, f"fulltext {query}")
+                summary.update({'json_path': paths['json_path'], 'csv_path': paths['csv_path'],
+                                'sample': results[:10]})
+            else:
+                summary['results'] = results
+            return [types.TextContent(type="text", text=json.dumps(summary, indent=2, ensure_ascii=False))]
 
         elif name == "search_authors":
             author_name = (arguments.get("name") or "").strip()

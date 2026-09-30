@@ -465,3 +465,64 @@ def test_scopus_coupling_fetches_title_when_ref_view_lacks_it(tmp_path):
         text = _call('bibliographic_coupling', {'seed_ids': ['111', '222'], 'min_shared': 1},
                      _oa_mock(), client_mock=scopus)
     assert "'Title 111' → 'Title 222'" in text
+
+
+# ---------------------------------------------------------------------------
+# citation_lineage with source='openalex'
+# ---------------------------------------------------------------------------
+
+def _lineage_corpus(text):
+    import base64
+    line = next(l for l in text.splitlines() if l.startswith('Corpus (base64'))
+    return json.loads(base64.b64decode(line.split(': ', 1)[1]))
+
+
+def test_rec_key_uses_openalex_id_before_doi():
+    from scopus_mcp.utils import _rec_key
+    assert _rec_key({'scopus_id': None, 'openalex_id': 'W1', 'doi': '10.1234/x'}) == 'W1'
+    assert _rec_key({'scopus_id': '85', 'openalex_id': 'W1'}) == '85'
+    assert _rec_key({'doi': '10.1234/x'}) == 'doi:10.1234/x'
+
+
+def test_lineage_forward_openalex_two_generations(tmp_path):
+    works = {'10.1234/seed': _work('W1', title='Seed', doi='10.1234/seed')}
+    citing = {
+        'W1': [_work('W2', title='Child A', year=2021), _work('W3', title='Child B', year=2022)],
+        'W2': [_work('W4', title='Grandchild', year=2024)],
+        'W3': [_work('W4', title='Grandchild', year=2024)],
+    }
+    m = _oa_mock(works=works, citing=citing)
+    with patch.dict(os.environ, {'SCOPUS_MCP_OUTPUT_DIR': str(tmp_path)}):
+        text = _call('citation_lineage', {'seed_id': '10.1234/seed', 'generations': 2,
+                                          'source': 'openalex'}, m)
+    assert 'Citation lineage (forward) for W1' in text
+    assert 'Source: OpenAlex' in text
+    assert 'gen 1: 2, gen 2: 1' in text
+    corpus = _lineage_corpus(text)
+    by_id = {r['openalex_id']: r for r in corpus['records']}
+    assert set(by_id) == {'W1', 'W2', 'W3', 'W4'}
+    # W4 cites both gen-1 papers: both are recorded as parents.
+    assert sorted(by_id['W4']['parents']) == ['W2', 'W3']
+    assert corpus['main_path'][0] == 'W1' and corpus['main_path'][-1] == 'W4'
+    assert m.citing.await_args_list[0].kwargs['sort'] == 'citedby'
+    assert 'lineage-openalex-w1' in text
+
+
+def test_lineage_backward_openalex(tmp_path):
+    seed = _work('W1', title='Seed', refs=['W8', 'W9'])
+    m = _oa_mock(works={'W1': seed})
+    m.references = AsyncMock(return_value=[_work('W8', title='Old A', year=1990),
+                                           _work('W9', title='Old B', year=1995)])
+    with patch.dict(os.environ, {'SCOPUS_MCP_OUTPUT_DIR': str(tmp_path)}):
+        text = _call('citation_lineage', {'seed_id': 'W1', 'direction': 'backward',
+                                          'source': 'openalex'}, m)
+    corpus = _lineage_corpus(text)
+    assert {r['openalex_id'] for r in corpus['records']} == {'W1', 'W8', 'W9'}
+    m.references.assert_awaited_once()
+    assert m.references.await_args.kwargs['limit'] == 200
+
+
+def test_lineage_openalex_rejects_relevancy_sort():
+    text = _call('citation_lineage', {'seed_id': 'W1', 'sort': 'relevancy',
+                                      'source': 'openalex'}, _oa_mock())
+    assert "sort='relevancy' is Scopus-only" in text

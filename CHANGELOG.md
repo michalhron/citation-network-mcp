@@ -19,6 +19,9 @@ are pushed yet (see "Release process" in ROADMAP.md).
   `openalex_api_key`, or `config.json`), sent as a Bearer header. A free key
   raises OpenAlex's daily budget from $0.10 to $1; errors report the
   remaining budget.
+- `citation_lineage` accepts `source="openalex"`: forward walks OpenAlex's
+  citing works, backward walks its reference lists, with OpenAlex work IDs
+  as node keys. `sort="relevancy"` stays Scopus-only.
 - `publication_counts`: publications per year for a query. Scopus runs one
   small search per year (range required, at most 60 years); OpenAlex one
   grouped request. Missing years show as zero; the current year is

@@ -415,6 +415,9 @@ async def handle_list_tools() -> list[types.Tool]:
                 "for forward) to collect the most-cited citers first, which gives a "
                 "meaningful citation-backbone; sort='coverDate' collects the most recent "
                 "citers first (which can produce a recency-dominated walk). "
+                "source='openalex' walks OpenAlex instead (no Scopus entitlement; "
+                "node IDs are OpenAlex work IDs; reference lists are thinner and "
+                "absent for AIS eLibrary papers). "
                 "Server version is included in every response."
             ),
             inputSchema={
@@ -422,8 +425,12 @@ async def handle_list_tools() -> list[types.Tool]:
                 "properties": {
                     "seed_id": {
                         "type": "string",
-                        "description": "Scopus ID or EID of the seed paper."
+                        "description": (
+                            "Scopus ID or EID of the seed paper. With source='openalex', "
+                            "a DOI or OpenAlex work ID also works."
+                        )
                     },
+                    "source": SOURCE_SCHEMA,
                     "generations": {
                         "type": "integer",
                         "description": "Number of generations to walk (default 1, max 3).",
@@ -450,9 +457,9 @@ async def handle_list_tools() -> list[types.Tool]:
                         "description": (
                             "'forward' (default): walk citing papers via search_all + REF(). "
                             "Fan-out can be large; use max_per_node to bound quota. "
-                            "'backward': walk cited references via get_references. "
-                            "Fan-out is naturally bounded (~40 refs/paper); "
-                            "references with neither scopus_id nor doi are skipped."
+                            "'backward': walk cited references via get_references, "
+                            "up to max_per_node per paper; references with no ID "
+                            "are skipped."
                         ),
                         "enum": ["forward", "backward"],
                         "default": "forward"
@@ -466,7 +473,7 @@ async def handle_list_tools() -> list[types.Tool]:
                             "the high-flow backbone. "
                             "'coverDate': most recent first — captures the current fringe "
                             "but may produce a recency-dominated walk on high-citation seeds. "
-                            "'relevancy': Scopus relevance score."
+                            "'relevancy': Scopus relevance score (Scopus only)."
                         ),
                         "enum": ["citedby", "coverDate", "relevancy"],
                         "default": "citedby"
@@ -954,28 +961,55 @@ async def handle_call_tool(
             if sort_arg not in _SORT_MAP:
                 raise ValueError(f"sort must be one of {list(_SORT_MAP)}")
             api_sort = _SORT_MAP[sort_arg]
-
-            seed_id = to_scopus_id(str(seed_id_raw))
-
-            # Fetch seed metadata (generation 0)
-            try:
-                raw_meta = await client.get_abstract(seed_id)
-                details = clean_abstract_details(raw_meta)
-            except Exception as exc:
+            source = _source(arguments)
+            if source == 'openalex' and sort_arg == 'relevancy':
                 raise ValueError(
-                    f"Could not fetch seed metadata for {seed_id}: {exc}"
-                ) from exc
+                    "sort='relevancy' is Scopus-only; OpenAlex cannot rank citing "
+                    "works by relevance. Use 'citedby' or 'coverDate'."
+                )
 
-            seed_paper = {
-                'scopus_id': seed_id,
-                'doi': details.get('doi'),
-                'title': details.get('title'),
-                'year': (details.get('cover_date') or '')[:4] or None,
-                'venue': details.get('publication_name'),
-                'generation': 0,
-                'parents': [],
-                'cited_by_count': details.get('cited_by_count'),
-            }
+            if source == 'openalex':
+                try:
+                    seed_work = await _resolve_openalex_work(seed_id_raw)
+                except Exception as exc:
+                    raise ValueError(
+                        f"Could not resolve seed {seed_id_raw} in OpenAlex: {exc}"
+                    ) from exc
+                seed_rec = clean_openalex_work(seed_work)
+                seed_id = seed_rec['openalex_id']
+                seed_paper = {
+                    'scopus_id': None,
+                    'openalex_id': seed_id,
+                    'doi': seed_rec['doi'],
+                    'title': seed_rec['title'],
+                    'year': seed_rec['year'],
+                    'venue': seed_rec['publication_name'],
+                    'generation': 0,
+                    'parents': [],
+                    'cited_by_count': seed_rec['cited_by_count'],
+                }
+            else:
+                seed_id = to_scopus_id(str(seed_id_raw))
+
+                # Fetch seed metadata (generation 0)
+                try:
+                    raw_meta = await client.get_abstract(seed_id)
+                    details = clean_abstract_details(raw_meta)
+                except Exception as exc:
+                    raise ValueError(
+                        f"Could not fetch seed metadata for {seed_id}: {exc}"
+                    ) from exc
+
+                seed_paper = {
+                    'scopus_id': seed_id,
+                    'doi': details.get('doi'),
+                    'title': details.get('title'),
+                    'year': (details.get('cover_date') or '')[:4] or None,
+                    'venue': details.get('publication_name'),
+                    'generation': 0,
+                    'parents': [],
+                    'cited_by_count': details.get('cited_by_count'),
+                }
 
             seen: set = {seed_id}
             all_papers: dict = {seed_id: seed_paper}
@@ -990,6 +1024,32 @@ async def handle_call_tool(
                 year, venue, cited_by_count.  The only difference between directions
                 is which client method is called and how the raw result is mapped.
                 """
+                if source == 'openalex':
+                    if direction == 'forward':
+                        works, _ = await openalex.citing(
+                            parent_id, max_results=max_per_node, sort=sort_arg)
+                    else:
+                        # Singleton lookups are free and cached; hydrating the
+                        # reference list costs one request per 50 references.
+                        parent_work = await openalex.get_work(parent_id)
+                        works = (await openalex.references(parent_work, limit=max_per_node)
+                                 if parent_work else [])
+                    result = []
+                    for w in works:
+                        rec = clean_openalex_work(w)
+                        if not rec['openalex_id']:
+                            continue
+                        result.append({
+                            'key': rec['openalex_id'],
+                            'scopus_id': None,
+                            'openalex_id': rec['openalex_id'],
+                            'doi': rec['doi'],
+                            'title': rec['title'],
+                            'year': rec['year'],
+                            'venue': rec['publication_name'],
+                            'cited_by_count': rec['cited_by_count'],
+                        })
+                    return result
                 if direction == 'forward':
                     raw = await client.search_all(
                         f"REF({to_eid(parent_id)})",
@@ -1083,14 +1143,17 @@ async def handle_call_tool(
                             'parents': [parent_id],
                             'cited_by_count': cbc_str,
                         }
+                        if p.get('openalex_id'):
+                            all_papers[key]['openalex_id'] = p['openalex_id']
                         gen_counts[gen] = gen_counts.get(gen, 0) + 1
 
                         # Expansion criteria for the next generation.
-                        # Only expand papers we can fetch by Scopus ID.
+                        # Only expand papers the backend can fetch by ID.
                         # min_citing applies to forward only (backward refs lack cbc).
-                        if gen < generations and p['scopus_id']:
+                        expand_id = p.get('openalex_id') or p['scopus_id']
+                        if gen < generations and expand_id:
                             if direction == 'backward' or cbc >= min_citing:
-                                next_to_expand.append(p['scopus_id'])
+                                next_to_expand.append(expand_id)
 
                 to_expand = next_to_expand
                 if not to_expand:
@@ -1108,7 +1171,8 @@ async def handle_call_tool(
             import json as _json
             from datetime import datetime
             _ts = datetime.now().strftime('%Y%m%dT%H%M%S')
-            _slug = _query_slug(f'lineage-{seed_id}')
+            _slug = _query_slug(
+                f'lineage-openalex-{seed_id}' if source == 'openalex' else f'lineage-{seed_id}')
             base_fname = f'scopus-{_slug}-{_ts}'
 
             json_path = write_lineage_to_disk(
@@ -1218,6 +1282,8 @@ async def handle_call_tool(
                     f"Corpus written to: {json_path}\n"
                     f"Corpus (base64, UTF-8 JSON): {corpus_b64}\n"
                 )
+                if source == 'openalex':
+                    text += "Source: OpenAlex (node IDs are OpenAlex work IDs).\n"
                 if not _spc_complete:
                     text += (
                         "SPC arc weights: NOT computed (no edges in lineage graph; "

@@ -66,8 +66,10 @@ Every new tool gets a live smoke test before it is trusted (see Lessons).
        seeds: Scopus coupling 4/4 seeds, 6 edges; OpenAlex 1/4. Two AIS
        eLibrary papers are in OpenAlex with no reference lists (and
        misattributed to JAIS), one ICIS paper has no exact title match.
-       Journal articles work, but thinner (Swanson 2025: 98 references in
-       OpenAlex vs 171 in Scopus). Citation-lineage support still to come.
+       Journal articles work, but thinner (Swanson 2025: 132 references in
+       OpenAlex vs 171 in Scopus). `citation_lineage` too: live forward
+       walk of Swanson & Ramiller 1997 (2 gens, 20 per node, min 50 cites):
+       Scopus 378 papers, OpenAlex 348, different main paths.
 4. [x] **Yearly publication counts.** `publication_counts`, both sources.
        Live 2015–2026 for "organizing vision": Scopus 61, OpenAlex 77, with
        different year profiles, so compare trends within one source only.

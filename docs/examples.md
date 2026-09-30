@@ -46,7 +46,7 @@ no Scopus subscription.
 
 > Which fields publish on organizing visions, and in which quartile of each?
 
-`topic_landscape`: papers per subject category, split into Q1–Q4 journals of that category, plus the share in unranked venues such as conference proceedings.
+`topic_landscape`: papers per subject category, split into Q1–Q4 journals of that category, and the mix of venue types. Quartiles count journal papers only by default; ranked proceedings and book series (IFAC-PapersOnLine, Procedia CIRP, IFIP AICT) are listed separately.
 
 > List the top-10% journals in Information Systems and Management Information Systems, then find their papers on digital platforms since 2018.
 

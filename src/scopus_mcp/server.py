@@ -25,6 +25,7 @@ from .journals import (
     serial_entry_issns,
     srcid_queries,
     subject_ranks,
+    venue_type,
 )
 from .openalex import (
     OpenAlexClient,
@@ -327,8 +328,10 @@ async def handle_list_tools() -> list[types.Tool]:
                 "(2) per subject category, how many papers appear in Q1, Q2, Q3 and Q4 "
                 "journals of that category, with the main journals. A journal can be "
                 "Q1 in one category and Q3 in another, so each paper counts in every "
-                "category of its journal. Venues without CiteScore ranks, such as "
-                "conference proceedings, are reported separately. Large topics are "
+                "category of its journal. By default quartiles count journal papers "
+                "only: proceedings series such as IFAC-PapersOnLine or Procedia CIRP "
+                "also carry CiteScore ranks, and are reported separately with book "
+                "series, together with the overall mix of venue types. Large topics are "
                 f"analysed on the most recent max_papers papers (up to {MAX_LANDSCAPE_PAPERS}); "
                 "coverage is stated. Needs Scopus search entitlement."
             ),
@@ -344,7 +347,9 @@ async def handle_list_tools() -> list[types.Tool]:
                     "max_papers": {"type": "integer", "default": 500,
                                    "description": f"Papers to analyse by quartile (default 500, max {MAX_LANDSCAPE_PAPERS})."},
                     "top_categories": {"type": "integer", "default": 15,
-                                       "description": "Categories to report, largest first."}
+                                       "description": "Categories to report, largest first."},
+                    "journals_only": {"type": "boolean", "default": True,
+                                      "description": "Count only journal papers in the quartiles; ranked conference proceedings and book series are reported separately. False counts every ranked venue."}
                 },
                 "required": ["query"]
             }
@@ -1244,6 +1249,7 @@ async def handle_call_tool(
                 full_query += f" AND PUBYEAR < {int(to_year) + 1}"
             max_papers = max(1, min(int(arguments.get("max_papers", 500)), MAX_LANDSCAPE_PAPERS))
             top_n = max(1, int(arguments.get("top_categories", 15)))
+            journals_only = bool(arguments.get("journals_only", True))
 
             # 1. Broad subject areas over the whole result set (one request).
             facet_data = (await client.search_facets(full_query, 'subjarea(count=30)')).get('search-results') or {}
@@ -1266,6 +1272,7 @@ async def handle_call_tool(
                 sid = e.get('source-id')
                 if sid and sid not in venue:
                     venue[sid] = {'name': e.get('prism:publicationName'),
+                                  'type': venue_type(e.get('prism:aggregationType')),
                                   'issns': [i for i in (normalize_issn(e.get('prism:issn')),
                                                         normalize_issn(e.get('prism:eIssn'))) if i]}
             names = category_names(await client.asjc_categories())
@@ -1275,32 +1282,47 @@ async def handle_call_tool(
                 sid = str(entry.get('source-id') or '')
                 if sid and sid not in ranks_by_sid:
                     ranks_by_sid[sid] = subject_ranks(entry, names)
+                    # Serial Title's type is authoritative for ranked venues.
+                    if sid in venue and entry.get('prism:aggregationType'):
+                        venue[sid]['type'] = venue_type(entry.get('prism:aggregationType'))
 
             # 4. Count each paper under every category of its journal.
             from collections import Counter
             per_cat, unranked_venues = {}, Counter()
             unranked = 0
+            mix = Counter()
             for e in entries:
                 sid = e.get('source-id')
+                kind = (venue.get(sid) or {}).get('type') or venue_type(e.get('prism:aggregationType'))
                 ranks = (ranks_by_sid.get(str(sid)) or {}).get('ranks') or []
+                mix[kind if ranks or kind != 'journal' else 'journal (unranked)'] += 1
                 if not ranks:
                     unranked += 1
-                    unranked_venues[e.get('prism:publicationName') or 'unknown'] += 1
+                    unranked_venues[(e.get('prism:publicationName') or 'unknown', kind)] += 1
                     continue
                 for r in ranks:
                     c = per_cat.setdefault(r['code'], {
                         'code': r['code'], 'category': r['category'] or names.get(r['code']),
-                        'papers': 0, 'Q1': 0, 'Q2': 0, 'Q3': 0, 'Q4': 0, '_journals': Counter()})
+                        'papers': 0, 'Q1': 0, 'Q2': 0, 'Q3': 0, 'Q4': 0,
+                        'ranked_non_journal': 0, '_journals': Counter(), '_other': Counter()})
+                    if journals_only and kind != 'journal':
+                        c['ranked_non_journal'] += 1
+                        c['_other'][(venue.get(sid, {}).get('name'), kind, r['quartile'])] += 1
+                        continue
                     c['papers'] += 1
                     c[r['quartile']] += 1
-                    c['_journals'][(venue.get(sid, {}).get('name'), r['quartile'], r['percentile'])] += 1
+                    c['_journals'][(venue.get(sid, {}).get('name'), kind, r['quartile'], r['percentile'])] += 1
 
             categories = []
-            for c in sorted(per_cat.values(), key=lambda c: -c['papers'])[:top_n]:
-                journals = c.pop('_journals')
+            ranked = sorted(per_cat.values(), key=lambda c: -(c['papers'] + c['ranked_non_journal']))
+            for c in ranked[:top_n]:
+                journals, other = c.pop('_journals'), c.pop('_other')
                 c['q1_share'] = round(c['Q1'] / c['papers'], 2) if c['papers'] else None
-                c['top_journals'] = [{'journal': j, 'quartile': q, 'percentile': p, 'papers': n}
-                                     for (j, q, p), n in journals.most_common(3)]
+                c['top_journals'] = [{'journal': j, 'type': t, 'quartile': q, 'percentile': p, 'papers': n}
+                                     for (j, t, q, p), n in journals.most_common(3)]
+                if journals_only:
+                    c['top_non_journal'] = [{'venue': v, 'type': t, 'quartile': q, 'papers': n}
+                                            for (v, t, q), n in other.most_common(3)]
                 categories.append(c)
 
             sampled = len(entries)
@@ -1312,10 +1334,13 @@ async def handle_call_tool(
                              f"most recent {sampled} of {total} ({round(100 * sampled / total)}%)"),
                 'broad_areas_all_results': broad,
                 'categories': categories,
+                'quartiles_count': 'journal papers only' if journals_only else 'all ranked venues',
+                'venue_mix': {k: {'papers': n, 'share': round(n / sampled, 2)}
+                              for k, n in mix.most_common()} if sampled else {},
                 'unranked': {'papers': unranked,
                              'share': round(unranked / sampled, 2) if sampled else None,
-                             'top_venues': [{'venue': v, 'papers': n}
-                                            for v, n in unranked_venues.most_common(5)]},
+                             'top_venues': [{'venue': v, 'type': t, 'papers': n}
+                                            for (v, t), n in unranked_venues.most_common(5)]},
                 'notes': [
                     "Quartiles are per category from each journal's latest complete CiteScore "
                     "year (current standing, not standing at publication).",
@@ -1323,11 +1348,14 @@ async def handle_call_tool(
                     "totals add up to more than the papers analysed.",
                     "Unranked papers appeared in venues without CiteScore ranks, typically "
                     "conference proceedings, books or new journals.",
+                    "With journals_only (the default), Q1-Q4 count journal papers; papers in "
+                    "ranked proceedings and book series are in ranked_non_journal.",
                 ],
             }
             flat = [{'category_code': c['code'], 'category': c['category'], 'papers': c['papers'],
                      'Q1': c['Q1'], 'Q2': c['Q2'], 'Q3': c['Q3'], 'Q4': c['Q4'],
-                     'q1_share': c['q1_share']} for c in categories]
+                     'q1_share': c['q1_share'], 'ranked_non_journal': c['ranked_non_journal']}
+                    for c in categories]
             if flat:
                 result['csv_path'] = str(_write_rows_csv(flat, 'landscape'))
             return [types.TextContent(type="text", text=json.dumps(result, indent=2, ensure_ascii=False))]

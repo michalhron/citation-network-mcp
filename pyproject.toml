@@ -1,11 +1,21 @@
 [project]
-name = "scopus-mcp"
+name = "citation-network-mcp"
 dynamic = ["version"]
-description = "A Model Context Protocol server for the Elsevier Scopus API"
+description = "MCP server for citation-network analysis on Scopus or OpenAlex: coupling, co-citation, lineages, bibliometrics"
 readme = "README.md"
 authors = [
+  {name = "Michal Hron"},
   {name = "qwe4559999", email = "heyrhao@126.com"},
   {name = "thinktraveller"}
+]
+license = "MIT"
+keywords = ["mcp", "scopus", "openalex", "bibliometrics", "citation-network",
+            "bibliographic-coupling", "co-citation", "main-path-analysis"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Operating System :: OS Independent",
+  "Intended Audience :: Science/Research",
+  "Topic :: Scientific/Engineering :: Information Analysis",
 ]
 requires-python = ">=3.10"
 dependencies = [
@@ -22,10 +32,10 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/qwe4559999/scopus-mcp"
-Documentation = "https://github.com/qwe4559999/scopus-mcp/blob/main/README.md"
-Repository = "https://github.com/qwe4559999/scopus-mcp"
-Issues = "https://github.com/qwe4559999/scopus-mcp/issues"
+Homepage = "https://github.com/michalhron/citation-network-mcp"
+Documentation = "https://github.com/michalhron/citation-network-mcp#readme"
+Repository = "https://github.com/michalhron/citation-network-mcp"
+Issues = "https://github.com/michalhron/citation-network-mcp/issues"
 
 [project.optional-dependencies]
 keyring = [
@@ -37,7 +47,9 @@ dev = [
 ]
 
 [project.scripts]
-scopus-mcp = "scopus_mcp.server:start"
+citation-network-mcp = "scopus_mcp.cli:main"
+# Alias kept so existing configs that run `scopus-mcp` keep working.
+scopus-mcp = "scopus_mcp.cli:main"
 
 [tool.pytest.ini_options]
 # 'integration' tests make real network requests against Elsevier and OpenAlex,

@@ -45,10 +45,10 @@ jobs:
       run: uv run python scripts/build_extension.py
 
     - name: Committed manifests must already be current
-      run: git diff --exit-code manifest.json plugins/scopus-mcp/.claude-plugin/plugin.json
+      run: git diff --exit-code manifest.json plugins/citation-network-mcp/.claude-plugin/plugin.json server.json
 
     - uses: actions/upload-artifact@v4
       with:
-        name: scopus-mcp-extension
+        name: citation-network-mcp-extension
         path: dist/*.mcpb
         retention-days: 14

@@ -38,16 +38,17 @@ in the README or `docs/` points nowhere.
 ## Extension and plugin
 
 `manifest.json` (Claude Desktop extension) and
-`plugins/scopus-mcp/.claude-plugin/plugin.json` (Claude Code plugin) take
-their version and tool list from the code:
+`plugins/citation-network-mcp/.claude-plugin/plugin.json` (Claude Code plugin)
+take their version and tool list from the code, and `server.json` (MCP
+registry) its version:
 
 ```bash
 uv run python scripts/build_extension.py
 ```
 
-This also validates and packs `dist/scopus-mcp-<version>.mcpb` (needs
-Node.js for `npx`). `tests/test_extension.py` fails when either manifest is
-stale, and CI builds the bundle on every push.
+This also validates and packs `dist/citation-network-mcp-<version>.mcpb`
+(needs Node.js for `npx`). `tests/test_extension.py` fails when any of these
+is stale, and CI builds the bundle on every push.
 
 ## Releases
 
@@ -55,8 +56,15 @@ stale, and CI builds the bundle on every push.
    version lives.
 2. Run `scripts/build_extension.py` and move the CHANGELOG's Unreleased
    entries under the new version.
-3. Merge to `main`, then push the tag `vX.Y.Z`. `release.yml` checks the tag
-   matches the version and publishes a GitHub Release with the `.mcpb`.
+3. Merge to `main`, then push the tag `vX.Y.Z`. Two workflows run:
+   `release.yml` publishes a GitHub Release with the `.mcpb`, and
+   `publish.yml` uploads `citation-network-mcp` to PyPI and then lists it in
+   the MCP registry. Both check that the tag matches the version.
 
-PyPI publishing (`publish.yml`) is manual only until the project has its own
-package name; `scopus-mcp` on PyPI belongs to upstream.
+Publishing uses GitHub OIDC, with no stored tokens: PyPI through a trusted
+publisher for this repository (workflow `publish.yml`, environment `pypi`),
+the registry through the `io.github.michalhron` namespace. The `mcp-name`
+line at the top of the README is how the registry verifies the PyPI package.
+
+The Python import package keeps its original name, `scopus_mcp`, and the
+`scopus-mcp` command remains as an alias, so older configurations work.

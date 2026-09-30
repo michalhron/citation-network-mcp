@@ -431,8 +431,8 @@ class TestServerVersion(unittest.TestCase):
         self.assertIn('dynamic = ["version"]', toml_text)
         self.assertIn('path = "src/scopus_mcp/__init__.py"', toml_text)
         self.assertEqual(SERVER_VERSION, scopus_mcp.__version__)
-        self.assertEqual(importlib.metadata.version('scopus-mcp'), scopus_mcp.__version__)
-        self.assertEqual(scopus_mcp.USER_AGENT, f'ScopusMCP/{scopus_mcp.__version__}')
+        self.assertEqual(importlib.metadata.version('citation-network-mcp'), scopus_mcp.__version__)
+        self.assertEqual(scopus_mcp.USER_AGENT, f'CitationNetworkMCP/{scopus_mcp.__version__}')
 
 
 if __name__ == '__main__':

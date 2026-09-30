@@ -28,8 +28,9 @@ sits between the two.
 MCP client config files are plain text, and Elsevier requires institutional
 tokens to be kept in a password-protected store. The server reads `api_key`,
 `insttoken` and `openalex_api_key` from the OS secret store under the service
-name `scopus-mcp`. Each command below prompts for the value, so it never
-lands in your shell history.
+name `scopus-mcp` (the project's former name, kept so existing entries keep
+working). Each command below prompts for the value, so it never lands in
+your shell history.
 
 **macOS** (Keychain):
 

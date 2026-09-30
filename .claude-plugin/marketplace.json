@@ -9,8 +9,8 @@
   },
   "plugins": [
     {
-      "name": "scopus-mcp",
-      "source": "./plugins/scopus-mcp",
+      "name": "citation-network-mcp",
+      "source": "./plugins/citation-network-mcp",
       "description": "Citation-network analysis on Scopus or OpenAlex: search, citations, coupling, co-citation, lineages, bibliometrics"
     }
   ]

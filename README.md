@@ -1,8 +1,10 @@
-# Scopus MCP
+# Citation Network MCP
+
+<!-- mcp-name: io.github.michalhron/citation-network-mcp -->
 
 **Citation-network analysis for Claude and other AI assistants, on Scopus or OpenAlex.**
 
-[![Tests](https://github.com/michalhron/scopus-mcp/actions/workflows/test.yml/badge.svg)](https://github.com/michalhron/scopus-mcp/actions/workflows/test.yml)
+[![Tests](https://github.com/michalhron/citation-network-mcp/actions/workflows/test.yml/badge.svg)](https://github.com/michalhron/citation-network-mcp/actions/workflows/test.yml)
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 
@@ -53,16 +55,16 @@ You need an API key from the [Elsevier Developer Portal](https://dev.elsevier.co
 (register with your institutional email). OpenAlex needs no key.
 
 **Claude Desktop** — one click:
-1. Download `scopus-mcp-<version>.mcpb` from the
-   [latest release](https://github.com/michalhron/scopus-mcp/releases/latest).
+1. Download `citation-network-mcp-<version>.mcpb` from the
+   [latest release](https://github.com/michalhron/citation-network-mcp/releases/latest).
 2. Open it (or drag it into *Settings → Extensions*), click **Install**, and
    paste your API key when asked. Claude stores it securely.
 
 **Claude Code** — two commands:
 
 ```bash
-claude plugin marketplace add michalhron/scopus-mcp
-claude plugin install scopus-mcp@michalhron
+claude plugin marketplace add michalhron/citation-network-mcp
+claude plugin install citation-network-mcp@michalhron
 ```
 
 Then make your key available, either in your shell
@@ -74,9 +76,9 @@ Then make your key available, either in your shell
 ```json
 {
   "mcpServers": {
-    "scopus": {
+    "citation-network": {
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/michalhron/scopus-mcp.git", "scopus-mcp"],
+      "args": ["--from", "git+https://github.com/michalhron/citation-network-mcp.git", "citation-network-mcp"],
       "env": { "SCOPUS_API_KEY": "YOUR_KEY" }
     }
   }
@@ -84,8 +86,7 @@ Then make your key available, either in your shell
 ```
 
 Then ask your assistant to run `diagnose_connection`: it checks your key and
-tells you which tools your Scopus access supports. (`uvx scopus-mcp` without
-`--from` installs an older, unrelated upstream package.)
+tells you which tools your Scopus access supports.
 
 ## Documentation
 
@@ -97,11 +98,11 @@ tells you which tools your Scopus access supports. (`uvx scopus-mcp` without
 | [Access and troubleshooting](docs/access.md) | Off-campus access, tokens, proxies, reading `diagnose_connection` |
 | [Comparison](docs/comparison.md) | This project vs the other Scopus MCP servers |
 | [Development](docs/development.md) | Tests, live smoke tests, releases |
-| [Prompt examples](USAGE_EXAMPLES.md) · [Changelog](CHANGELOG.md) · [Roadmap](ROADMAP.md) | |
+| [Prompt examples](docs/examples.md) · [Changelog](CHANGELOG.md) · [Roadmap](ROADMAP.md) | |
 
 ## Origins
 
-This project began as a fork of
+Formerly `michalhron/scopus-mcp`. This project began as a fork of
 [qwe4559999/scopus-mcp](https://github.com/qwe4559999/scopus-mcp) by
 [thinktraveller](https://github.com/thinktraveller) and
 [qwe4559999](https://github.com/qwe4559999), which provides Scopus search,

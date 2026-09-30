@@ -54,7 +54,7 @@ from .utils import (
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("scopus-mcp")
+logger = logging.getLogger("citation-network-mcp")
 
 SERVER_VERSION = __version__
 
@@ -69,10 +69,10 @@ SERVER_INSTRUCTIONS = (
 )
 
 server = Server(
-    "scopus-mcp",
+    "citation-network-mcp",
     version=__version__,
     instructions=SERVER_INSTRUCTIONS,
-    website_url="https://github.com/michalhron/scopus-mcp",
+    website_url="https://github.com/michalhron/citation-network-mcp",
 )
 client = ScopusClient()
 # OpenAlex backend: the same analyses without Scopus subscriber entitlement.
@@ -1293,7 +1293,7 @@ async def handle_call_tool(
             return [types.TextContent(
                 type="text",
                 text=(
-                    f"scopus-mcp server\n"
+                    f"citation-network-mcp server\n"
                     f"version: {SERVER_VERSION}\n"
                     f"status: ok\n"
                 ),

@@ -442,11 +442,12 @@ def test_citation_context_same_status_for_doi_and_scopus_ids():
         '10.1080/07421222.2003.11045760': {'title': 'Organizing Visions for IT',
                                            'publication_year': 2003, 'ids': {}}}[doi])
     with _real_s2(_s2_handler):
-        by_doi = _call('citation_context', {'citing': '10.2307/25148655',
+        by_doi = _call('citation_context', {'citing': '10.2307/25148655', 'fulltext_fallback': False,
                                             'cited': '10.1080/07421222.2003.11045760'}, client, oa)
-        by_scopus = _call('citation_context', {'citing': '9744280481', 'cited': '0041928100'}, client, oa)
+        by_scopus = _call('citation_context', {'citing': '9744280481', 'cited': '0041928100',
+                                               'fulltext_fallback': False}, client, oa)
     for text in (by_doi, by_scopus):
-        assert ': contexts_withheld; intents: none given' in text
+        assert ': contexts_withheld; source: none; intents: none given' in text
         assert '[resolved: citing by title_match, cited by doi]' in text
 
 

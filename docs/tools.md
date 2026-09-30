@@ -180,7 +180,7 @@ All papers citing one or more seed papers, found by several search strategies at
 
 ### `citation_context`
 
-How one paper cites another: the citing sentences, the citation intent (background, methodology, result) and whether Semantic Scholar classes the citation as influential. Evidence for whether a citation edge carries the cited idea or is a passing mention. Up to 50 pairs per call; IDs are DOIs, Scopus IDs or OpenAlex IDs, resolved to Semantic Scholar by DOI, MAG ID, then title and year (the route is reported). Statuses: found, contexts_withheld (the citation is known, its sentences are not), edge_absent_in_s2, citing_paper_unresolved, cited_paper_unresolved. Contexts are cleaned of page headers and citation-free noise and ranked, most informative first.
+How one paper cites another: the citing sentences, the citation intent (background, methodology, result) and whether Semantic Scholar classes the citation as influential. Evidence for whether a citation edge carries the cited idea or is a passing mention. Up to 50 pairs per call; IDs are DOIs, Scopus IDs or OpenAlex IDs, resolved to Semantic Scholar by DOI, MAG ID, then title and year (the route is reported). Statuses: found, contexts_withheld (the citation is known, its sentences are not), edge_absent_in_s2, citing_paper_unresolved, cited_paper_unresolved. Contexts are cleaned of page headers and citation-free noise and ranked, most informative first. Where Semantic Scholar has no usable sentences, the citing paper's full text is searched instead (context_source: semantic_scholar, fulltext_sciencedirect, fulltext_oa or none).
 
 | Parameter | Type | Default | Description |
 | --- | --- | --- | --- |
@@ -189,6 +189,28 @@ How one paper cites another: the citing sentences, the citation intent (backgrou
 | `pairs` | list of object |  | Several [citing, cited] pairs, instead of citing/cited. |
 | `max_contexts` | integer | 3 | Most contexts returned per pair (default 3). |
 | `construct_terms` | list of string |  | Terms that make a context more informative, e.g. ['organizing vision']. |
+| `fulltext_fallback` | boolean | True | When Semantic Scholar has no usable sentences, fetch the citing paper's full text (ScienceDirect, then open access), find the cited work in its reference list and return the sentences that cite it. |
+
+### `path_transmission`
+
+Transmission audit of a main path: for each consecutive edge (later paper citing the earlier one) it gathers the citing sentences (Semantic Scholar, then the citing paper's full text), Semantic Scholar's intent and influential flags, how many contexts name the construct terms, and whether the citation sits in a list of three or more works. Proposes a draft label per edge (substantive, construct-shifted, hollow, unresolved) with its evidence, and writes a CSV coding sheet with blank columns for two independent coders. Draft labels are heuristics for a human coder to confirm or overturn, not findings: substantive = the citing paper engages the cited work (influential, method/result intent, or two or more non-list contexts) and a context names a construct term in the cited work's own clause; construct-shifted = engages it without naming the construct; hollow = only background or list citations; unresolved = no context sentences from any source.
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `path_ids` | list of string | required | The main path, oldest first (as citation_network reports it): Scopus IDs, DOIs or OpenAlex IDs. |
+| `construct_terms` | list of string | required | The construct and its variants, e.g. ['organizing vision']. |
+| `corpus_json` | string |  | Optional citation_network corpus file, to add each edge's SPC weight. |
+| `max_contexts` | integer | 5 | Most contexts kept per edge (default 5). |
+
+### `index_coverage`
+
+Which papers cite the seeds according to Scopus, OpenAlex and Semantic Scholar, under the same journal scope, and how the three sets overlap. Papers are matched by DOI, else by title and year. Makes index coverage a reported property of a study rather than a hidden one. Scopus side: REF() search (not verified; use resolve_citers for that).
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `seed_ids` | list of string | required | Seed papers (Scopus IDs or EIDs). |
+| `scope` |  |  | Restrict to journals, by ISSN: a list of ISSNs, or a basket name ('basket_of_eight' / 'ais8': the AIS Senior Scholars' Basket of Eight). ISSNs are used rather than journal names, which Scopus spells inconsistently. |
+| `max_results` | integer | 1000 | Cap per index and seed (default 1000). |
 
 ## Bibliometrics and bibliography
 

@@ -22,7 +22,7 @@ GROUPS = [
     ('Citations', ['get_references', 'get_citing_papers']),
     ('Networks and lineage', ['bibliographic_coupling', 'co_citation', 'citation_lineage',
                               'citation_network']),
-    ('Audit', ['resolve_citers', 'citation_context']),
+    ('Audit', ['resolve_citers', 'citation_context', 'path_transmission', 'index_coverage']),
     ('Bibliometrics and bibliography', ['publication_counts', 'topic_landscape',
                                         'get_journal_metrics', 'find_journals',
                                         'get_bibtex']),

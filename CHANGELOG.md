@@ -5,6 +5,14 @@ are pushed yet (see "Release process" in ROADMAP.md).
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-09-30
+
+### Changed
+- `server.py` (2,248 lines, 21 tools in one if/elif chain) is split into
+  `scopus_mcp/tools/` modules by group; `server.py` keeps the server, the
+  clients and a dispatcher (154 lines). No behaviour change: the test suite
+  passes unmodified.
+
 ### Added
 - `topic_landscape` `sample` option for topics larger than `max_papers`:
   `recent` (default), `cited` (most-cited first, where influential work

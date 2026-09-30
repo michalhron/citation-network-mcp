@@ -2,7 +2,7 @@
   "manifest_version": "0.4",
   "name": "citation-network-mcp",
   "display_name": "Citation Network MCP",
-  "version": "0.13.0",
+  "version": "0.14.0",
   "description": "Citation-network analysis on Scopus or OpenAlex: search, citations, coupling, co-citation, lineages, bibliometrics.",
   "long_description": "Search the literature, trace who cites whom across generations, map research fronts and intellectual bases, and get publication counts, journal metrics and BibTeX. Scopus by default; OpenAlex needs no subscription.",
   "author": {
@@ -42,60 +42,40 @@
       "description": "Search for documents in Scopus using a query string."
     },
     {
-      "name": "get_abstract_details",
-      "description": "Retrieve full details for a specific document by Scopus ID."
-    },
-    {
-      "name": "get_author_profile",
-      "description": "Retrieve an author's profile by Author ID."
-    },
-    {
-      "name": "get_citing_papers",
-      "description": "Retrieve a list of papers that have cited the specified document (Forward Citations)."
-    },
-    {
-      "name": "diagnose_connection",
-      "description": "Diagnose Scopus connectivity and entitlement."
-    },
-    {
-      "name": "get_quota_status",
-      "description": "Get the current API quota status (remaining/limit)."
-    },
-    {
-      "name": "resolve_identifier",
-      "description": "Resolve any document identifier (Scopus ID, EID, DOI, or PII) to the full cross-reference set (scopus_id, eid, doi, pii, title)."
-    },
-    {
       "name": "search_all",
       "description": "Search Scopus (or OpenAlex with source='openalex') and page through results automatically, returning up to max_results entries in one call."
-    },
-    {
-      "name": "find_journals",
-      "description": "List the journals in one or more Scopus subject categories at or above a CiteScore percentile within that category: the quality cut-off for scoping a literature review (Q1 = 75, top 10% = 90)."
-    },
-    {
-      "name": "topic_landscape",
-      "description": "Where and at what prestige a topic is published."
     },
     {
       "name": "search_fulltext",
       "description": "Search the full text of Elsevier (ScienceDirect) journal articles, not just titles and abstracts: finds papers that use a construct in their body without naming it up front."
     },
     {
+      "name": "get_abstract_details",
+      "description": "Retrieve full details for a specific document by Scopus ID."
+    },
+    {
+      "name": "resolve_identifier",
+      "description": "Resolve any document identifier (Scopus ID, EID, DOI, or PII) to the full cross-reference set (scopus_id, eid, doi, pii, title)."
+    },
+    {
       "name": "search_authors",
       "description": "Find authors by name, optionally narrowed by affiliation."
     },
     {
-      "name": "get_journal_metrics",
-      "description": "Journal metrics for a list of journals, e.g."
+      "name": "get_author_profile",
+      "description": "Retrieve an author's profile by Author ID."
     },
     {
-      "name": "get_bibtex",
-      "description": "BibTeX entries for a list of papers, written to a .bib file and returned inline."
+      "name": "get_fulltext",
+      "description": "Retrieve the full text of a paper via a provider waterfall: (1) ScienceDirect full text (requires SCOPUS_INSTTOKEN or institutional IP), (2) open-access copy via OpenAlex + direct fetch, (3) Scopus abstract fallback."
     },
     {
-      "name": "publication_counts",
-      "description": "Count publications per year for a query, e.g."
+      "name": "get_references",
+      "description": "Retrieve the cited-reference list of a document (Backward Citations) via the Abstract Retrieval REF view."
+    },
+    {
+      "name": "get_citing_papers",
+      "description": "Retrieve a list of papers that have cited the specified document (Forward Citations)."
     },
     {
       "name": "bibliographic_coupling",
@@ -106,20 +86,40 @@
       "description": "Build a co-citation graph for a set of seed papers."
     },
     {
-      "name": "get_references",
-      "description": "Retrieve the cited-reference list of a document (Backward Citations) via the Abstract Retrieval REF view."
+      "name": "citation_lineage",
+      "description": "Walk the citation lineage of a seed paper across multiple generations."
     },
     {
-      "name": "get_fulltext",
-      "description": "Retrieve the full text of a paper via a provider waterfall: (1) ScienceDirect full text (requires SCOPUS_INSTTOKEN or institutional IP), (2) open-access copy via OpenAlex + direct fetch, (3) Scopus abstract fallback."
+      "name": "publication_counts",
+      "description": "Count publications per year for a query, e.g."
+    },
+    {
+      "name": "topic_landscape",
+      "description": "Where and at what prestige a topic is published."
+    },
+    {
+      "name": "get_journal_metrics",
+      "description": "Journal metrics for a list of journals, e.g."
+    },
+    {
+      "name": "find_journals",
+      "description": "List the journals in one or more Scopus subject categories at or above a CiteScore percentile within that category: the quality cut-off for scoping a literature review (Q1 = 75, top 10% = 90)."
+    },
+    {
+      "name": "get_bibtex",
+      "description": "BibTeX entries for a list of papers, written to a .bib file and returned inline."
+    },
+    {
+      "name": "diagnose_connection",
+      "description": "Diagnose Scopus connectivity and entitlement."
+    },
+    {
+      "name": "get_quota_status",
+      "description": "Get the current API quota status (remaining/limit)."
     },
     {
       "name": "get_server_info",
       "description": "Return the server version and a health summary."
-    },
-    {
-      "name": "citation_lineage",
-      "description": "Walk the citation lineage of a seed paper across multiple generations."
     }
   ],
   "keywords": [

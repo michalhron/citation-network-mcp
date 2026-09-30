@@ -9,6 +9,21 @@ and Windows with Python 3.10 and 3.12. Tests never read your real secret
 store. Tests marked `integration` call the live APIs and run only with
 `pytest -m integration`.
 
+## Layout
+
+- `src/scopus_mcp/server.py`: the MCP server, the Scopus and OpenAlex
+  clients, prompts and a dispatcher.
+- `src/scopus_mcp/tools/`: tool schemas and handlers, one module per group
+  (`search`, `citations`, `networks`, `bibliometrics`, `diagnostics`) plus
+  shared helpers in `common.py`. Each module exports `TOOLS` and `HANDLERS`.
+  Handlers read the clients from the server module at call time, which is
+  also where tests replace them.
+- API clients and parsing: `client.py` (Elsevier), `openalex.py`,
+  `fulltext_search.py`, `journals.py`, `authors.py`, `bibtex.py`, `utils.py`.
+
+To add a tool, add its schema to `TOOLS` and a handler to `HANDLERS` in the
+right group module, then regenerate `docs/tools.md` and the manifests.
+
 ## Smoke-test against the live APIs
 
 Mocked tests prove logic, not the live API's behaviour. Each of these passed

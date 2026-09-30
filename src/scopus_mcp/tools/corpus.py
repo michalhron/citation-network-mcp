@@ -34,7 +34,15 @@ from ..records import (
     to_eid,
     to_scopus_id,
 )
-from ..semantic_scholar import DEFAULT_MAX_CONTEXTS, citation_contexts, citing_papers, venue_issns
+from ..client import FULLTEXT_MIN_CHARS
+from ..fulltext_contexts import contexts_from_text
+from ..semantic_scholar import (
+    DEFAULT_MAX_CONTEXTS,
+    citation_contexts,
+    citing_papers,
+    clean_contexts,
+    venue_issns,
+)
 from .common import SOURCE_SCHEMA, _resolve_openalex_work, _source, server_module
 
 logger = logging.getLogger("scopus-plus-mcp")
@@ -218,7 +226,10 @@ TOOLS = [
             "contexts_withheld (the citation is known, its sentences are not), "
             "edge_absent_in_s2, citing_paper_unresolved, cited_paper_unresolved. "
             "Contexts are cleaned of page headers and citation-free noise and "
-            "ranked, most informative first."
+            "ranked, most informative first. Where Semantic Scholar has no usable "
+            "sentences, the citing paper's full text is searched instead "
+            "(context_source: semantic_scholar, fulltext_sciencedirect, "
+            "fulltext_oa or none)."
         ),
         inputSchema={
             "type": "object",
@@ -246,6 +257,15 @@ TOOLS = [
                     "type": "array",
                     "items": {"type": "string"},
                     "description": "Terms that make a context more informative, e.g. ['organizing vision'].",
+                },
+                "fulltext_fallback": {
+                    "type": "boolean",
+                    "default": True,
+                    "description": (
+                        "When Semantic Scholar has no usable sentences, fetch the citing "
+                        "paper's full text (ScienceDirect, then open access), find the cited "
+                        "work in its reference list and return the sentences that cite it."
+                    ),
                 },
             },
         },
@@ -1040,27 +1060,45 @@ async def _identity(identifier: str) -> dict:
     else:
         details = clean_abstract_details(await srv.client.get_abstract(to_scopus_id(ident)))
         out.update(doi=(details.get('doi') or '').lower() or None, title=details.get('title'),
-                   year=(details.get('cover_date') or '')[:4] or None)
+                   year=(details.get('cover_date') or '')[:4] or None,
+                   surnames=[a.get('surname') for a in details.get('authors') or [] if a.get('surname')])
         return out
     if work:
         out['doi'] = out['doi'] or (bare_doi(work.get('doi')) or '').lower() or None
         out['title'] = work.get('title')
         out['year'] = work.get('publication_year')
         out['mag'] = (work.get('ids') or {}).get('mag')
+        out['surnames'] = [(a.get('author') or {}).get('display_name', '').split()[-1]
+                           for a in work.get('authorships') or []
+                           if (a.get('author') or {}).get('display_name')]
     return out
 
 
-async def _citation_context(arguments: dict) -> list:
-    pairs_in = list(arguments.get("pairs") or [])
-    if arguments.get("citing") and arguments.get("cited"):
-        pairs_in = [{'citing': arguments['citing'], 'cited': arguments['cited']}] + pairs_in
-    if not pairs_in:
-        raise ValueError("Give citing and cited, or pairs.")
-    if len(pairs_in) > MAX_CONTEXT_PAIRS:
-        raise ValueError(f"At most {MAX_CONTEXT_PAIRS} pairs per call.")
-    max_contexts = int(arguments.get("max_contexts", DEFAULT_MAX_CONTEXTS))
-    terms = arguments.get("construct_terms") or []
+async def _citing_fulltext(doi: str):
+    """(text, source) for a citing paper: ScienceDirect when entitled,
+    else the open-access waterfall; (None, None) when neither has it."""
+    srv = server_module()
+    try:
+        sd = await srv.client.get_sciencedirect_fulltext(doi)
+        text = ((sd or {}).get('full-text-retrieval-response') or {}).get('originalText') or ''
+        if len(text.strip()) >= FULLTEXT_MIN_CHARS:
+            return text, 'fulltext_sciencedirect'
+    except Exception as exc:
+        logger.info(f"ScienceDirect full text failed for {doi}: {exc}")
+    try:
+        oa = await srv.fetch_oa_fulltext(doi)
+        if oa.get('text'):
+            return oa['text'], 'fulltext_oa'
+    except Exception as exc:
+        logger.info(f"Open-access full text failed for {doi}: {exc}")
+    return None, None
 
+
+async def gather_contexts(pairs_in, terms=(), max_contexts=DEFAULT_MAX_CONTEXTS, fulltext=True):
+    """Contexts for [{'citing', 'cited'}]: Semantic Scholar first, then the
+    citing paper's full text where S2 has no usable sentences. Each result
+    carries 'context_source': semantic_scholar, fulltext_oa,
+    fulltext_sciencedirect or none."""
     resolved, problems, cache = [], [], {}
     for p in pairs_in:
         try:
@@ -1071,17 +1109,66 @@ async def _citation_context(arguments: dict) -> list:
                              'citing_ident': cache[p['citing']], 'cited_ident': cache[p['cited']]})
         except Exception as exc:
             problems.append({'citing': p.get('citing'), 'cited': p.get('cited'),
-                             'context': {'status': 'error', 'detail': _err(exc)}})
-    results = await citation_contexts(resolved, terms, max_contexts) + problems
-    lines = [f"Citation contexts from Semantic Scholar for {len(results)} pair(s)."]
+                             'context': {'status': 'error', 'detail': _err(exc),
+                                         'context_source': 'none'}})
+    results = await citation_contexts(resolved, terms, max_contexts)
+    texts = {}
+    for r in results:
+        c = r['context']
+        if c['status'] == 'found':
+            c['context_source'] = 'semantic_scholar'
+            continue
+        c['context_source'] = 'none'
+        doi = r['citing_ident'].get('doi')
+        if not fulltext or not doi:
+            continue
+        if doi not in texts:
+            jobs.progress(f"full text of {doi}")
+            texts[doi] = await _citing_fulltext(doi)
+        text, source = texts[doi]
+        if not text:
+            c['fulltext_note'] = 'no full text available (not entitled, no open copy)'
+            continue
+        cited = dict(r['cited_ident'])
+        cited['surnames'] = cited.get('surnames') or c.get('cited_surnames') or []
+        found = contexts_from_text(text, cited)
+        kept, total, _ = clean_contexts(found['contexts'], cited['surnames'], cited.get('year'),
+                                        terms, max_contexts)
+        if kept:
+            c.update({'s2_status': c['status'], 'status': 'found', 'context_source': source,
+                      'contexts': kept, 'n_contexts': len(kept), 'n_contexts_total': total,
+                      'reference_entry': (found['reference_entry'] or '')[:300]})
+            c.setdefault('intents', [])
+            c.setdefault('is_influential', False)
+            c.pop('note', None)
+        else:
+            c['fulltext_note'] = f"full text checked ({source}): {found['reason'] or 'no citing sentence'}"
+    return results + problems
+
+
+async def _citation_context(arguments: dict) -> list:
+    pairs_in = list(arguments.get("pairs") or [])
+    if arguments.get("citing") and arguments.get("cited"):
+        pairs_in = [{'citing': arguments['citing'], 'cited': arguments['cited']}] + pairs_in
+    if not pairs_in:
+        raise ValueError("Give citing and cited, or pairs.")
+    if len(pairs_in) > MAX_CONTEXT_PAIRS:
+        raise ValueError(f"At most {MAX_CONTEXT_PAIRS} pairs per call.")
+    results = await gather_contexts(pairs_in, arguments.get("construct_terms") or [],
+                                    int(arguments.get("max_contexts", DEFAULT_MAX_CONTEXTS)),
+                                    arguments.get("fulltext_fallback", True))
+    lines = [f"Citation contexts for {len(results)} pair(s) (Semantic Scholar, then the "
+             "citing paper's full text)."]
     for r in results:
         c = r['context']
         head = f"{r['citing']} → {r['cited']}: {c['status']}"
         if c['status'] in ('found', 'contexts_withheld'):
-            head += (f"; intents: {', '.join(c['intents']) or 'none given'}; "
-                     f"influential: {str(c['is_influential']).lower()}; "
-                     f"{c['n_contexts']} of {c['n_contexts_total']} context(s) shown; "
-                     f"via {c.get('via')}")
+            head += (f"; source: {c.get('context_source')}; "
+                     f"intents: {', '.join(c.get('intents') or []) or 'none given'}; "
+                     f"influential: {str(c.get('is_influential', False)).lower()}; "
+                     f"{c.get('n_contexts', 0)} of {c.get('n_contexts_total', 0)} context(s) shown")
+            if c.get('s2_status'):
+                head += f" (Semantic Scholar: {c['s2_status']})"
         elif c.get('detail'):
             head += f" ({c['detail']})"
         if c.get('citing_route') or c.get('cited_route'):
@@ -1090,8 +1177,9 @@ async def _citation_context(arguments: dict) -> list:
         lines.append(head)
         for ctx in c.get('contexts') or []:
             lines.append(f"    “{ctx}”")
-        if c.get('note'):
-            lines.append(f"    {c['note']}")
+        for key in ('note', 'fulltext_note'):
+            if c.get(key):
+                lines.append(f"    {c[key]}")
     return [types.TextContent(type="text", text='\n'.join(lines))]
 
 

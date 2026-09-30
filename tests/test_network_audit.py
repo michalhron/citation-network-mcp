@@ -383,6 +383,6 @@ def test_citation_context_tool_formats_pairs():
     oa.get_work = AsyncMock(return_value=None)
     with patch('scopus_mcp.tools.corpus.citation_contexts', new=fake):
         text = _call('citation_context', {'citing': '10.1/km', 'cited': '10.2/wang'}, openalex_mock=oa)
-    assert '10.1/km → 10.2/wang: found; intents: background; influential: false' in text
+    assert '10.1/km → 10.2/wang: found; source: semantic_scholar; intents: background; influential: false' in text
     assert '[resolved: citing by doi, cited by title_match]' in text
     assert '“as argued (Wang, 2010)”' in text

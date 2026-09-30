@@ -222,7 +222,8 @@ class ContextFinder:
                       terms: Sequence[str] = (), limit: int = DEFAULT_MAX_CONTEXTS) -> Dict[str, Any]:
         a, b = await self.paper(citing), await self.paper(cited)
         routes = {'citing_route': a and a['route'], 'cited_route': b and b['route'],
-                  's2_citing_id': a and a['paperId'], 's2_cited_id': b and b['paperId']}
+                  's2_citing_id': a and a['paperId'], 's2_cited_id': b and b['paperId'],
+                  'cited_surnames': surnames(b)}
         if a is None:
             return {'status': 'citing_paper_unresolved', **routes,
                     'note': 'No DOI, MAG or title match for the citing paper in Semantic Scholar.'}

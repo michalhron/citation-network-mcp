@@ -2,7 +2,7 @@
   "manifest_version": "0.4",
   "name": "scopus-plus-mcp",
   "display_name": "Scopus Plus MCP",
-  "version": "0.17.1",
+  "version": "0.18.0",
   "description": "Scopus and more: search, full text, citation networks, journal quality and bibliometrics; OpenAlex without a subscription.",
   "long_description": "Search Scopus and ScienceDirect full text, trace citation lineages, map coupling and co-citation networks, scope reviews by field and journal quartile, and get counts, metrics and BibTeX. OpenAlex covers the same analyses without a Scopus subscription. Not affiliated with Elsevier.",
   "author": {
@@ -100,6 +100,14 @@
     {
       "name": "citation_context",
       "description": "How one paper cites another: the citing sentences, the citation intent (background, methodology, result) and whether Semantic Scholar classes the citation as influential."
+    },
+    {
+      "name": "path_transmission",
+      "description": "Transmission audit of a main path: for each consecutive edge (later paper citing the earlier one) it gathers the citing sentences (Semantic Scholar, then the citing paper's full text), Semantic Scholar's intent and influential flags, how many contexts name the construct terms, and whether the citation sits in a list of three or more works."
+    },
+    {
+      "name": "index_coverage",
+      "description": "Which papers cite the seeds according to Scopus, OpenAlex and Semantic Scholar, under the same journal scope, and how the three sets overlap."
     },
     {
       "name": "publication_counts",

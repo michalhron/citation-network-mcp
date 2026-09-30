@@ -144,8 +144,11 @@ run from a cloud session.
       completeness fallbacks, cross-index citers, S2 resolution routes.
 - [x] P2 background jobs, inline nodes/paged full, key-route wording,
       context cleaning, per-strategy table, duplicates.
-- [ ] 0.18.0: context fallback from full text; `path_transmission`;
-      multi-index corpus diff; coding-sheet export.
+- [x] 0.18.0: context fallback from full text; `path_transmission`;
+      `index_coverage`; coding-sheet export.
+- [ ] Contexts from AIS eLibrary full text (403 to automated downloads;
+      needs a sanctioned route, e.g. user-supplied PDFs).
+- [ ] Kappa helper for the filled coding sheet.
 
 ## Phase 3 — Research pipeline
 

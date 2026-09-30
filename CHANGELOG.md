@@ -5,6 +5,40 @@ are pushed yet (see "Release process" in ROADMAP.md).
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-09-30
+
+Roadmap items A to D from the 0.17.0 field test: the main-path transmission
+audit, done by hand in the field test, as tools.
+
+### Added
+- **A.** `citation_context` falls back to the citing paper's full text when
+  Semantic Scholar has no usable sentences: ScienceDirect when entitled,
+  else the open-access waterfall. The cited work is found in the reference
+  list (surname, year, title words) and the sentences carrying an
+  author-year or numeric marker are returned; running headings and leaked
+  bibliography text are filtered out. Every result reports
+  `context_source` (`semantic_scholar`, `fulltext_sciencedirect`,
+  `fulltext_oa`, `none`). Live: Swanson 2010 (JSIS) citing Swanson &
+  Ramiller 1997, which Semantic Scholar does not record, now returns two
+  sentences from ScienceDirect. AIS eLibrary refuses automated downloads
+  (HTTP 403), so JAIS full text is usually unavailable.
+- **B.** `path_transmission(path_ids, construct_terms)`: per main-path edge,
+  the contexts (S2, then full text), intent and influential flags, how many
+  contexts name the construct in the cited work's own clause (so "fashions
+  (Wang, 2010), and organizing visions (Ramiller & Swanson, 2003)" does not
+  credit Wang), and list citations (three or more works in one parenthesis,
+  or enumerated in one sentence). A draft label per edge (substantive,
+  construct-shifted, hollow, unresolved) with its evidence, stated to be a
+  heuristic for a human coder. On the organizing-vision main path: 1
+  substantive, 2 construct-shifted, 2 hollow, 4 unresolved.
+- **C.** `index_coverage(seed_ids, scope)`: citers of the seeds in Scopus,
+  OpenAlex and Semantic Scholar under one scope, matched by DOI, else title
+  and year, with the seven-region overlap.
+- **D.** `path_transmission` writes a CSV coding sheet (UTF-8 with BOM, so
+  Excel opens it): edge, citing, cited, SPC (from a `citation_network`
+  corpus file), source, intents, influential, contexts, draft label,
+  evidence, and blank columns for two coders.
+
 ## [0.17.1] - 2026-09-30
 
 Fixes from the 0.17.0 field test (organizing-vision network, Basket of

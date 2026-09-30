@@ -161,6 +161,10 @@ Direct-citation network within a set of papers, in one call: fetches every paper
 | `check_completeness` | boolean | True | Compare each reference list with an independent count (default true). |
 | `weight` | `spc` \| `splc` \| `spnp` | spc | Traversal weight for the main paths and key routes: 'spc' (search path count, source-to-sink paths), 'splc' (search path link count: paths starting at any paper), 'spnp' (search path node pair: paths between any two papers). Liu & Lu 2012. |
 | `key_route_search` | `local` \| `global` | local | How key edges are extended: 'local' follows the heaviest adjoining edge; 'global' takes the heaviest whole path to and from the key edge. |
+| `check_retractions` | boolean | True | Flag retracted, withdrawn or concern-flagged papers (Crossref / Retraction Watch; default true). |
+| `edge_contexts` | boolean | False | Also gather citation contexts for every edge (Semantic Scholar; one request per citing paper, cached), give each a draft transmission label, and write a coding sheet for two coders. Slow without a Semantic Scholar key; runs as a job past the sync budget. |
+| `construct_terms` | list of string |  | With edge_contexts: the construct for the draft labels, e.g. ['organizing vision']. |
+| `max_context_edges` | integer | 300 | With edge_contexts: most edges to examine, heaviest SPC first (default 300). |
 | `robustness` | boolean | True | Also compute the global main path under all three weights and report the papers they share: a path that survives a change of weight is a finding, one that does not is partly an artefact of the weight. |
 | `inline` | `summary` \| `edges` \| `nodes` \| `full` | edges | What the reply carries besides the file paths. 'summary': counts, flags and paths. 'edges' (default): also every edge as a compact line (up to 2,000). 'nodes': one compact line per paper (ID, author year, venue, references retrieved/reported, comparison count and source, completeness, error) plus the edges: node-level data for callers that cannot read the server's files, about 25k characters for 150 papers. 'full': the corpus as JSON, paged by page/page_size nodes. |
 | `page` | integer | 1 | With inline='full': which page of nodes (1-based). |
@@ -248,6 +252,16 @@ Transmission audit of a main path: for each consecutive edge (later paper citing
 | `corpus_json` | string |  | Optional citation_network corpus file, to add each edge's SPC weight. |
 | `max_contexts` | integer | 5 | Most contexts kept per edge (default 5). |
 
+### `coding_agreement`
+
+Inter-coder agreement on a coding sheet from path_transmission (or citation_network with edge_contexts) once two coders have filled their columns: Cohen's kappa with a 95% interval and its Landis & Koch reading, agreement per label, the confusion matrix and the disagreeing edges. Also scores the draft labels against each coder and against the coders' consensus, i.e. how far the heuristic can be trusted. Reads .csv (comma, semicolon or tab), as saved from Excel.
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `path` | string | required | The filled coding sheet (.csv). |
+| `coder_columns` | list of string |  | The two coder columns (default coder_1_label, coder_2_label). |
+| `reference_column` | string | draft_label | Labels to validate against the coders (default draft_label; '' for none). |
+
 ### `index_coverage`
 
 Which papers cite the seeds according to Scopus, OpenAlex and Semantic Scholar, under the same journal scope, and how the three sets overlap. Papers are matched by DOI, else by title and year. Makes index coverage a reported property of a study rather than a hidden one. Scopus side: REF() search (not verified; use resolve_citers for that).
@@ -257,6 +271,16 @@ Which papers cite the seeds according to Scopus, OpenAlex and Semantic Scholar, 
 | `seed_ids` | list of string | required | Seed papers (Scopus IDs or EIDs). |
 | `scope` |  |  | Restrict to journals, by ISSN: a list of ISSNs, or a basket name ('basket_of_eight' / 'ais8': the AIS Senior Scholars' Basket of Eight). ISSNs are used rather than journal names, which Scopus spells inconsistently. |
 | `max_results` | integer | 1000 | Cap per index and seed (default 1000). |
+
+### `check_retractions`
+
+Retractions, withdrawals, expressions of concern and corrections for a set of papers, from Crossref (which carries the Retraction Watch database). Give DOIs, Scopus IDs, or a corpus_file from import_records. citation_network runs the same check on every network by default.
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `dois` | list of string |  |  |
+| `ids` | list of string |  | Scopus IDs or EIDs. |
+| `corpus_file` | string |  | A corpus file from import_records. |
 
 ## Bibliometrics and bibliography
 

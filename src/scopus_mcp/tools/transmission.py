@@ -20,13 +20,17 @@ from ..baskets import (
     resolve_scope,
     scope_scopus_query,
 )
+from ..agreement import analyse, interpret, read_sheet
 from ..fulltext_contexts import construct_near_marker, is_list_citation
+from ..graphs import _make_node_label
+from ..importers import load_corpus_file
+from ..retractions import check_dois, status_of
 from ..openalex import clean_openalex_work, normalize_title, short_id
 from ..records import clean_abstract_details, clean_search_results, to_eid, to_scopus_id
 from ..semantic_scholar import citing_papers, venue_issns
 from .common import _resolve_openalex_work, server_module
 from ..output import _output_dir
-from .corpus import _base_name, _issn_ok, gather_contexts, venue_abbr
+from .corpus import _base_name, _issn_ok, _scopus_records_for, gather_contexts, venue_abbr
 
 logger = logging.getLogger("scopus-plus-mcp")
 
@@ -79,6 +83,38 @@ TOOLS = [
             },
             "required": ["path_ids", "construct_terms"],
         },
+    ),
+    types.Tool(
+        name="coding_agreement",
+        description=(
+            "Inter-coder agreement on a coding sheet from path_transmission (or citation_network "
+            "with edge_contexts) once two coders have filled their columns: Cohen's kappa with "
+            "a 95% interval and its Landis & Koch reading, agreement per label, the confusion "
+            "matrix and the disagreeing edges. Also scores the draft labels against each coder "
+            "and against the coders' consensus, i.e. how far the heuristic can be trusted. "
+            "Reads .csv (comma, semicolon or tab), as saved from Excel."
+        ),
+        inputSchema={"type": "object", "properties": {
+            "path": {"type": "string", "description": "The filled coding sheet (.csv)."},
+            "coder_columns": {"type": "array", "items": {"type": "string"},
+                              "description": "The two coder columns (default coder_1_label, coder_2_label)."},
+            "reference_column": {"type": "string", "default": "draft_label",
+                                 "description": "Labels to validate against the coders (default draft_label; '' for none)."},
+        }, "required": ["path"]},
+    ),
+    types.Tool(
+        name="check_retractions",
+        description=(
+            "Retractions, withdrawals, expressions of concern and corrections for a set of "
+            "papers, from Crossref (which carries the Retraction Watch database). Give DOIs, "
+            "Scopus IDs, or a corpus_file from import_records. citation_network runs the same "
+            "check on every network by default."
+        ),
+        inputSchema={"type": "object", "properties": {
+            "dois": {"type": "array", "items": {"type": "string"}},
+            "ids": {"type": "array", "items": {"type": "string"}, "description": "Scopus IDs or EIDs."},
+            "corpus_file": {"type": "string", "description": "A corpus file from import_records."},
+        }},
     ),
     types.Tool(
         name="index_coverage",
@@ -348,7 +384,119 @@ async def _index_coverage(arguments: dict) -> list:
     return [types.TextContent(type="text", text='\n'.join(lines))]
 
 
+# ── coding_agreement ────────────────────────────────────────────────────
+
+
+def _kappa_text(k):
+    if k['kappa'] is None:
+        return f"kappa undefined (n={k['n']})"
+    lo, hi = k['ci95']
+    return (f"kappa {k['kappa']:.2f} [95% CI {lo:.2f} to {hi:.2f}], {interpret(k['kappa'])}; "
+            f"observed agreement {k['observed']:.0%}, chance {k['expected']:.0%}; n={k['n']}")
+
+
+async def _coding_agreement(arguments: dict) -> list:
+    rows = read_sheet(arguments.get("path") or '')
+    cols = arguments.get("coder_columns") or ['coder_1_label', 'coder_2_label']
+    if len(cols) != 2:
+        raise ValueError("coder_columns needs exactly two column names.")
+    ref = arguments.get("reference_column", 'draft_label') or None
+    res = analyse(rows, cols[0], cols[1], ref)
+    if not res['coded']:
+        raise ValueError(f"No row has both {cols[0]} and {cols[1]} filled in yet.")
+    lines = [f"Agreement between {cols[0]} and {cols[1]} on {res['coded']} of {res['rows']} edges: "
+             + _kappa_text(res['agreement']) + ".",
+             "Per label (coder A count / coder B count / both; specific agreement; one-vs-rest kappa):"]
+    for label, v in res['per_label'].items():
+        sa = f"{v['specific_agreement']:.2f}" if v['specific_agreement'] is not None else '—'
+        kk = f"{v['kappa']:.2f}" if v['kappa'] is not None else '—'
+        lines.append(f"  {label}: {v['coder_a']} / {v['coder_b']} / {v['both']}; {sa}; {kk}")
+    labels, m = res['confusion']
+    lines.append(f"Confusion matrix (rows {cols[0]}, columns {cols[1]}):")
+    lines.append('  ' + ' | '.join([' ' * 18] + [l[:12].ljust(12) for l in labels]))
+    for label, row in zip(labels, m):
+        lines.append('  ' + ' | '.join([label[:18].ljust(18)] + [str(x).ljust(12) for x in row]))
+    if res['disagreements']:
+        lines.append(f"Disagreements ({len(res['disagreements'])}): " + '; '.join(
+            f"edge {d['id']} {d.get('citing') or ''} → {d.get('cited') or ''}: {d['a']} vs {d['b']}"
+            for d in res['disagreements'][:20]))
+    if res.get('reference'):
+        r = res['reference']
+        lines.append(f"Draft labels ({r['column']}) against the coders — the heuristic's validity:")
+        lines.append(f"  vs {cols[0]}: " + _kappa_text(r['vs_coder_a']))
+        lines.append(f"  vs {cols[1]}: " + _kappa_text(r['vs_coder_b']))
+        lines.append("  vs consensus (edges where the coders agree): " + _kappa_text(r['vs_consensus']))
+    lines.append("Landis & Koch (1977): below 0.20 slight, 0.21-0.40 fair, 0.41-0.60 moderate, "
+                 "0.61-0.80 substantial, above 0.80 almost perfect. With few edges the interval "
+                 "is wide; report it.")
+    return [types.TextContent(type="text", text='\n'.join(lines))]
+
+
+# ── check_retractions ───────────────────────────────────────────────────
+
+
+def retraction_lines(notices_by_doi, label_of) -> list:
+    """Summary lines for a {doi: notices} map; label_of(doi) names a paper."""
+    groups = {'retracted': [], 'concern': [], 'corrected': []}
+    unknown = 0
+    for doi, notices in notices_by_doi.items():
+        if notices is None:
+            unknown += 1
+            continue
+        st = status_of(notices)
+        if st in groups:
+            groups[st].append((doi, notices))
+    lines = []
+
+    def fmt(doi, notices):
+        n = max(notices, key=lambda x: x.get('date') or '')
+        return f"{label_of(doi)} ({n.get('label') or n.get('type')} {n.get('date') or ''}; notice {n.get('notice_doi')})"
+    if groups['retracted']:
+        lines.append(f"RETRACTED or withdrawn ({len(groups['retracted'])}): "
+                     + '; '.join(fmt(d, n) for d, n in groups['retracted']))
+    if groups['concern']:
+        lines.append(f"Expression of concern ({len(groups['concern'])}): "
+                     + '; '.join(fmt(d, n) for d, n in groups['concern']))
+    if groups['corrected']:
+        lines.append(f"Corrected ({len(groups['corrected'])}): "
+                     + '; '.join(label_of(d) for d, _ in groups['corrected'][:10])
+                     + (' ...' if len(groups['corrected']) > 10 else ''))
+    checked = len(notices_by_doi) - unknown
+    if not any(groups.values()):
+        lines.append(f"Retractions: none among {checked} papers checked at Crossref.")
+    if unknown:
+        lines.append(f"Retraction check failed for {unknown} DOI(s) (Crossref unreachable).")
+    return lines
+
+
+async def _check_retractions(arguments: dict) -> list:
+    srv = server_module()
+    dois = [str(d).lower() for d in arguments.get("dois") or []]
+    labels = {}
+    if arguments.get("corpus_file"):
+        corpus = load_corpus_file(arguments['corpus_file'])
+        for r in corpus.get('records') or []:
+            if r.get('doi'):
+                dois.append(r['doi'])
+                labels[r['doi']] = f"{(r.get('title') or '')[:60]} ({r.get('year') or '?'})"
+    if arguments.get("ids"):
+        found = await _scopus_records_for(srv.client, 'EID', [to_scopus_id(i) for i in arguments['ids']])
+        for rec in found.values():
+            if rec.get('doi'):
+                d = rec['doi'].lower()
+                dois.append(d)
+                labels[d] = f"{_make_node_label(rec, rec['scopus_id'])}: {(rec.get('title') or '')[:60]}"
+    if not dois:
+        raise ValueError("Give dois, ids or corpus_file (papers without a DOI cannot be checked).")
+    notices = await check_dois(dois)
+    lines = [f"Checked {len(notices)} DOIs at Crossref (Retraction Watch data)."]
+    lines += retraction_lines(notices, lambda d: labels.get(d, d))
+    return [types.TextContent(type="text", text='\n'.join(lines))]
+
+
 HANDLERS = {
     'path_transmission': _path_transmission,
     'index_coverage': _index_coverage,
+    'coding_agreement': _coding_agreement,
+    'check_retractions': _check_retractions,
 }

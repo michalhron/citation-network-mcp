@@ -2,7 +2,7 @@
   "manifest_version": "0.4",
   "name": "scopus-plus-mcp",
   "display_name": "Scopus Plus MCP",
-  "version": "0.23.0",
+  "version": "0.24.0",
   "description": "Scopus and more: search, full text, citation networks, journal quality and bibliometrics; OpenAlex without a subscription.",
   "long_description": "Search Scopus and ScienceDirect full text, trace citation lineages, map coupling and co-citation networks, scope reviews by field and journal quartile, and get counts, metrics and BibTeX. OpenAlex covers the same analyses without a Scopus subscription. Not affiliated with Elsevier.",
   "author": {
@@ -120,6 +120,14 @@
     {
       "name": "path_transmission",
       "description": "Transmission audit of a main path: for each consecutive edge (later paper citing the earlier one) it gathers the citing sentences (Semantic Scholar, then the citing paper's full text), Semantic Scholar's intent and influential flags, how many contexts name the construct terms, and whether the citation sits in a list of three or more works."
+    },
+    {
+      "name": "coding_agreement",
+      "description": "Inter-coder agreement on a coding sheet from path_transmission (or citation_network with edge_contexts) once two coders have filled their columns: Cohen's kappa with a 95% interval and its Landis & Koch reading, agreement per label, the confusion matrix and the disagreeing edges."
+    },
+    {
+      "name": "check_retractions",
+      "description": "Retractions, withdrawals, expressions of concern and corrections for a set of papers, from Crossref (which carries the Retraction Watch database)."
     },
     {
       "name": "index_coverage",

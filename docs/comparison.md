@@ -43,10 +43,10 @@ Corrections are welcome as issues.
 | Institutional token | ✓ | — | ✓ | ✓ | — | — |
 | Access diagnostics | ✓ | — | ✓ | — | — | — |
 | Response cache and retries | ✓ | ✓ | ✓ | — | — | — |
-| Test functions | 504 | 5 | 10 | 0 | 156 | 6 |
+| Test functions | 510 | 5 | 10 | 0 | 156 | 6 |
 | CI on Linux, macOS and Windows | ✓ | — | — | — | — | — |
 | **Project** | | | | | | |
-| Tools | 33 | 5 | 25 | 13 | 12 | 6 |
+| Tools | 35 | 5 | 25 | 13 | 12 | 6 |
 | Commits | 120 | 45 | 5 | 7 | 12 | 6 |
 | Last commit | 2026-09 | 2026-05 | 2026-05 | 2026-06 | 2026-04 | 2026-05 |
 
@@ -126,6 +126,8 @@ version; — not supported. Corrections are welcome.
 | Reference-list completeness against Crossref, OpenAlex, S2 | ✓ | — | — | — | — | — | — |
 | Citer sets verified across strategies and indexes | ✓ | — | — | — | — | — | — |
 | Citation contexts and intent; transmission audit | ✓ | — | — | — | — | — | — |
+| Inter-coder agreement on the audit's coding sheet | ✓ | — | — | — | — | — | — |
+| Retraction flags (Retraction Watch via Crossref) | ✓ | — | — | — | — | — | — |
 | Journal percentiles and quartiles per category | ✓ | — | ✓ | — | — | — | — |
 | Full text and full-text search | ✓ | — | ✓ | — | — | — | — |
 | **Maturity** | | | | | | | |

@@ -3,11 +3,13 @@ import asyncio
 import csv
 import json
 import logging
+from pathlib import Path
 
 import mcp.types as types
 
 from .. import jobs
 from ..baskets import openalex_issn_filter, resolve_scope, scope_scopus_query
+from ..importers import load_corpus_file
 from ..openalex import clean_openalex_work, short_id
 from ..output import _output_dir
 from ..records import _reconstruct_abstract_from_openalex, clean_search_results, scalar, to_scopus_id
@@ -143,10 +145,33 @@ async def _collect_openalex_docs(openalex, arguments, mode):
     return docs
 
 
+def _docs_from_file(corpus: dict, mode: str):
+    """Documents straight from an imported corpus: its own keywords and
+    abstracts, no API calls."""
+    docs = []
+    for i, r in enumerate(corpus.get('records') or []):
+        year = str(r.get('year') or '')
+        if not year.isdigit():
+            continue
+        if mode == 'title_abstract':
+            terms, kind = phrases(f"{r.get('title') or ''}. {r.get('abstract') or ''}"), 'text'
+        else:
+            ak, ix = r.get('author_keywords') or [], r.get('index_keywords') or []
+            raw = ak + ix if mode == 'all_keywords' else (ak or ix)
+            kind = ('author+index' if mode == 'all_keywords' else 'author' if ak else 'index') if raw else 'none'
+            terms = sorted({normalize_term(t) for t in raw} - {''})
+        docs.append({'id': r.get('scopus_id') or r.get('doi') or str(i), 'year': int(year),
+                     'terms': terms, 'kind': kind})
+    return docs
+
+
 async def _thematic_evolution(arguments: dict) -> list:
     srv = server_module()
+    from_file = arguments.get("corpus_file")
     ids, query = arguments.get("ids"), arguments.get("query")
-    if bool(ids) == bool(query):
+    if from_file and (ids or query):
+        raise ValueError("Give corpus_file, ids or query, not several.")
+    if not from_file and bool(ids) == bool(query):
         raise ValueError("Give either ids or query.")
     if ids and len(ids) > MAX_CORPUS:
         raise ValueError(f"At most {MAX_CORPUS} ids per call.")
@@ -154,7 +179,10 @@ async def _thematic_evolution(arguments: dict) -> list:
     if mode not in TERM_MODES:
         raise ValueError(f"terms must be one of {', '.join(TERM_MODES)}")
     source = _source(arguments)
-    if source == 'openalex':
+    if from_file:
+        source = 'corpus file'
+        docs = _docs_from_file(load_corpus_file(from_file), mode)
+    elif source == 'openalex':
         docs = await _collect_openalex_docs(srv.openalex, arguments, mode)
     else:
         docs = await _collect_scopus_docs(srv.client, arguments, mode)
@@ -177,7 +205,7 @@ async def _thematic_evolution(arguments: dict) -> list:
     construct = track_construct(periods, arguments.get("construct_terms") or []) \
         if arguments.get("construct_terms") else []
 
-    label = query or f"{len(docs)} papers"
+    label = query or (Path(from_file).stem if from_file else f"{len(docs)} papers")
     base = _base_name(f"themes-{label}")
     out = _output_dir()
     serial = [{k: v for k, v in p.items() if k not in ('co_occurrence', 'frequency', 'doc_terms')} for p in periods]

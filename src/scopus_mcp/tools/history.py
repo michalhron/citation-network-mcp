@@ -22,6 +22,8 @@ CORPUS_PROPS = {
     "ids": {"type": "array", "items": {"type": "string"},
             "description": "The papers (Scopus IDs/EIDs; with source='openalex', DOIs or OpenAlex IDs). Use this or query."},
     "query": {"type": "string", "description": "Search query defining the set, instead of ids."},
+    "corpus_file": {"type": "string",
+                    "description": "A corpus file from import_records, instead of ids or query."},
     "max_results": {"type": "integer", "default": 300,
                     "description": "With query: how many papers to include (default 300)."},
     "scope": SCOPE_SCHEMA,

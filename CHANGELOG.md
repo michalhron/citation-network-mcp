@@ -5,6 +5,20 @@ are pushed yet (see "Release process" in ROADMAP.md).
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-09-30
+
+### Added
+- `import_records`: reads saved exports (Scopus CSV, RIS, BibTeX; Web of
+  Science plain text and tab-delimited; format detected), merges records
+  across files by Scopus ID, WoS ID, DOI or title and year, and looks up
+  Scopus IDs for the rest by DOI, then exact title and year. Writes a
+  corpus file and returns its Scopus IDs. Only export file types are read
+  (.csv, .txt, .ris, .bib, .tsv; up to 50 MB).
+- `corpus_file` on `citation_network`, `rpys`, `historiograph`,
+  `research_fronts` and `thematic_evolution`: analyse exactly the imported
+  records again later. `thematic_evolution` takes keywords and abstracts
+  from the file itself, with no API calls.
+
 ## [0.22.0] - 2026-09-30
 
 ### Added

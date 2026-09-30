@@ -2,7 +2,7 @@
   "manifest_version": "0.4",
   "name": "scopus-plus-mcp",
   "display_name": "Scopus Plus MCP",
-  "version": "0.22.0",
+  "version": "0.23.0",
   "description": "Scopus and more: search, full text, citation networks, journal quality and bibliometrics; OpenAlex without a subscription.",
   "long_description": "Search Scopus and ScienceDirect full text, trace citation lineages, map coupling and co-citation networks, scope reviews by field and journal quartile, and get counts, metrics and BibTeX. OpenAlex covers the same analyses without a Scopus subscription. Not affiliated with Elsevier.",
   "author": {
@@ -144,6 +144,10 @@
     {
       "name": "get_bibtex",
       "description": "BibTeX entries for a list of papers, written to a .bib file and returned inline."
+    },
+    {
+      "name": "import_records",
+      "description": "Read saved bibliographic exports into one deduplicated corpus file: Scopus CSV, RIS or BibTeX exports and Web of Science plain-text or tab-delimited exports (format detected)."
     },
     {
       "name": "diagnose_connection",

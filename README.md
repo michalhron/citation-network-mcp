@@ -39,7 +39,7 @@ How it compares with the other Scopus MCP servers: **[comparison](docs/compariso
 
 | | |
 | --- | --- |
-| **Search and records** | `search_scopus` · `search_all` · `get_abstract_details` · `resolve_identifier` · `get_author_profile` · `get_fulltext` |
+| **Search and records** | `search_scopus` · `search_all` · `get_abstract_details` · `resolve_identifier` · `search_authors` · `get_author_profile` · `get_fulltext` |
 | **Citations** | `get_references` · `get_citing_papers` |
 | **Networks** | `bibliographic_coupling` · `co_citation` · `citation_lineage` |
 | **Bibliometrics** | `publication_counts` · `get_journal_metrics` · `get_bibtex` |

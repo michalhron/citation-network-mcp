@@ -43,6 +43,16 @@ Resolve any document identifier (Scopus ID, EID, DOI, or PII) to the full cross-
 | `identifier` | string | required | The identifier value (e.g. '0031512927', '2-s2.0-0031512927', or a DOI). |
 | `id_type` | `scopus_id` \| `eid` \| `doi` \| `pii` |  | Optional override of the identifier type. |
 
+### `search_authors` · **OpenAlex**
+
+Find authors by name, optionally narrowed by affiliation. Scopus (default, needs subscriber entitlement): author IDs for get_author_profile, document counts, current affiliation, subject areas and name variants, ranked by document count. OpenAlex: OpenAlex author IDs, ORCID, works and citation counts, h-index, institution and topics. Common surnames need an affiliation or given name to be useful.
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `name` | string | required | 'Surname, Given names' or 'Given names Surname', e.g. 'Swanson, E. Burton'. |
+| `affiliation` | string |  | Optional affiliation words to narrow the match, e.g. 'Los Angeles'. |
+| `count` | integer | 10 | Number of authors to return (default 10, max 25). |
+
 ### `get_author_profile`
 
 Retrieve an author's profile by Author ID.

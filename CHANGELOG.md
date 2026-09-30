@@ -5,6 +5,12 @@ are pushed yet (see "Release process" in ROADMAP.md).
 
 ## [Unreleased]
 
+### Added
+- `search_authors`: find authors by name, optionally narrowed by
+  affiliation. Scopus returns author IDs for `get_author_profile`, document
+  counts, affiliation, subject areas and name variants; OpenAlex returns
+  ORCID, h-index, institution and topics.
+
 ## [0.9.0] - 2026-09-30
 
 ### Changed

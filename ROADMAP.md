@@ -9,7 +9,7 @@ _Last updated: 2026-09-30._
 ## Status
 
 - 0.9.0: Phase 1 features complete and merged (PRs #2, #3). See CHANGELOG.md.
-- 17 tools. Scopus: search, `search_all`, abstracts, author profiles,
+- 18 tools. Scopus: search, `search_all`, abstracts, author search and profiles,
   identifiers, references, citing papers, full text. Networks:
   `bibliographic_coupling`, `co_citation`, `citation_lineage` with SPC main
   path. Bibliometrics: `publication_counts`, `get_journal_metrics`,
@@ -62,9 +62,10 @@ Every new tool gets a live smoke test before it is trusted (see Lessons).
 6. [x] **BibTeX export.** `get_bibtex`; publisher metadata via DOI content
        negotiation (errors included: Crossref spells Doreian "Dereian" for
        Hummon & Doreian 1989), generated entries for DOI-less AIS papers.
-7. [ ] **Author search by name.** Scopus Author Search (subscriber
-       entitlement), with OpenAlex authors as the `source="openalex"` option.
-       Today `get_author_profile` needs a Scopus author ID.
+7. [x] **Author search by name.** `search_authors`, Scopus and OpenAlex.
+       Live: Scopus finds E. Burton Swanson (94 documents, UCLA) plus a split
+       one-document profile; OpenAlex ranks him first by full name but cannot
+       filter by institution, so affiliation filtering covers its top 25.
 
 ## Phase 2 — Public release (only if outside users are wanted)
 

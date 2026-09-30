@@ -1,9 +1,12 @@
 name: Publish to PyPI
 
+# Manual only. The package is still named scopus-mcp, which on PyPI belongs
+# to upstream (qwe4559999/scopus-mcp), so publishing on every version tag
+# would push this project under their name. Re-enable a tag trigger once the
+# project has its own PyPI name. Version tags now drive release.yml, which
+# attaches the Claude Desktop extension to a GitHub Release.
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_dispatch:
 
 jobs:
   build-n-publish:

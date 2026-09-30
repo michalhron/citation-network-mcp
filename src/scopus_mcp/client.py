@@ -76,7 +76,7 @@ FULLTEXT_MIN_CHARS = 5000
 CAPABILITY_TOOLS = {
     'search': ['search_scopus', 'search_all', 'get_citing_papers',
                'co_citation', 'citation_lineage (forward)',
-               'publication_counts (Scopus)'],
+               'publication_counts (Scopus)', 'search_authors (Scopus)'],
     'references': ['get_references', 'bibliographic_coupling',
                    'citation_lineage (backward)'],
     'fulltext': ['get_fulltext (ScienceDirect step; falls back to OA/abstract)'],
@@ -462,6 +462,17 @@ class ScopusClient:
 
         pairs = await asyncio.gather(*(count(y) for y in range(from_year, to_year + 1)))
         return dict(pairs)
+
+    async def search_authors(self, query: str, count: int = 10) -> Dict[str, Any]:
+        """
+        Scopus Author Search (content/search/author); results come ranked by
+        document count. Needs subscriber entitlement. The endpoint throttles
+        quickly; 429s go through the usual retries.
+        """
+        return await self._request(
+            'GET', 'content/search/author', {'query': query, 'count': count},
+            ttl=self.cache_config['author'],
+        )
 
     async def serial_titles(self, issns: list) -> list:
         """

@@ -219,6 +219,17 @@ class OpenAlexClient:
                     "daily budget tenfold.")
         return msg
 
+    async def search_authors(self, name: str, count: int = 10) -> List[Dict[str, Any]]:
+        """Authors matching a name (OpenAlex relevance order). One search
+        request (10 credits)."""
+        data = await self._get('authors', {
+            'search': _search_value(name),
+            'per-page': count,
+            'select': 'id,display_name,orcid,works_count,cited_by_count,'
+                      'last_known_institutions,summary_stats,topics',
+        }) or {}
+        return data.get('results') or []
+
     async def get_source_by_issn(self, issn: str) -> Optional[Dict[str, Any]]:
         """Journal (OpenAlex 'source') by ISSN, '0276-7783' form; free, cached."""
         return await self._get(f'sources/issn:{issn}', {

@@ -1,0 +1,21 @@
+# Only the package, its build files and the icon go into the extension.
+.git/
+.github/
+.venv/
+.claude/
+.claude-plugin/
+plugins/
+tests/
+docs/
+scripts/
+dist/
+*.mcpb
+**/__pycache__/
+config.json
+ROADMAP*.md
+USAGE_EXAMPLES.md
+README_CN.md
+MCP_tool_config.json
+server.json
+.pytest_cache/
+.ruff_cache/

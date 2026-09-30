@@ -39,7 +39,7 @@ How it compares with the other Scopus MCP servers: **[comparison](docs/compariso
 
 | | |
 | --- | --- |
-| **Search and records** | `search_scopus` · `search_all` · `get_abstract_details` · `resolve_identifier` · `get_author_profile` · `get_fulltext` |
+| **Search and records** | `search_scopus` · `search_all` · `get_abstract_details` · `resolve_identifier` · `search_authors` · `get_author_profile` · `get_fulltext` |
 | **Citations** | `get_references` · `get_citing_papers` |
 | **Networks** | `bibliographic_coupling` · `co_citation` · `citation_lineage` |
 | **Bibliometrics** | `publication_counts` · `get_journal_metrics` · `get_bibtex` |
@@ -47,28 +47,45 @@ How it compares with the other Scopus MCP servers: **[comparison](docs/compariso
 
 Parameters and details for each: [tool reference](docs/tools.md).
 
-## Quick start
+## Install
 
-You need [uv](https://docs.astral.sh/uv/) and an API key from the
-[Elsevier Developer Portal](https://dev.elsevier.com/) (register with your
-institutional email). Add this to your MCP client's config, for Claude
-Desktop `claude_desktop_config.json`:
+You need an API key from the [Elsevier Developer Portal](https://dev.elsevier.com/)
+(register with your institutional email). OpenAlex needs no key.
+
+**Claude Desktop** — one click:
+1. Download `scopus-mcp-<version>.mcpb` from the
+   [latest release](https://github.com/michalhron/scopus-mcp/releases/latest).
+2. Open it (or drag it into *Settings → Extensions*), click **Install**, and
+   paste your API key when asked. Claude stores it securely.
+
+**Claude Code** — two commands:
+
+```bash
+claude plugin marketplace add michalhron/scopus-mcp
+claude plugin install scopus-mcp@michalhron
+```
+
+Then make your key available, either in your shell
+(`export SCOPUS_API_KEY=...`) or, better, in the
+[OS secret store](docs/configuration.md#keep-secrets-out-of-config-files).
+
+**Any other MCP client** (needs [uv](https://docs.astral.sh/uv/)):
 
 ```json
 {
   "mcpServers": {
     "scopus": {
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/michalhron/scopus-mcp.git@main", "scopus-mcp"],
+      "args": ["--from", "git+https://github.com/michalhron/scopus-mcp.git", "scopus-mcp"],
       "env": { "SCOPUS_API_KEY": "YOUR_KEY" }
     }
   }
 }
 ```
 
-Restart the client, then ask it to run `diagnose_connection`. Pin a commit
-instead of `@main` if you want upgrades to be deliberate. (`uvx scopus-mcp`
-without `--from` installs the older upstream package.)
+Then ask your assistant to run `diagnose_connection`: it checks your key and
+tells you which tools your Scopus access supports. (`uvx scopus-mcp` without
+`--from` installs an older, unrelated upstream package.)
 
 ## Documentation
 

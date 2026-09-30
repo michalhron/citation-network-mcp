@@ -21,7 +21,7 @@ Corrections are welcome as issues.
 | BibTeX export | ✓ | — | ✓ | — | — | — |
 | Full text (ScienceDirect, open access) | ✓ | — | ✓ | ✓ | — | — |
 | Author profile by ID | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Author search by name | — | — | ✓ | ✓ | ✓ | — |
+| Author search by name | ✓ | — | ✓ | ✓ | ✓ | — |
 | Altmetrics, Embase, affiliation search | — | — | ✓ | partly | — | — |
 | **Reliability** | | | | | | |
 | Institutional token | ✓ | — | ✓ | ✓ | — | — |
@@ -30,7 +30,7 @@ Corrections are welcome as issues.
 | Test functions | 167 | 5 | 10 | 0 | 156 | 6 |
 | CI on Linux, macOS and Windows | ✓ | — | — | — | — | — |
 | **Project** | | | | | | |
-| Tools | 17 | 5 | 25 | 13 | 12 | 6 |
+| Tools | 18 | 5 | 25 | 13 | 12 | 6 |
 | Commits | 85 | 45 | 5 | 7 | 12 | 6 |
 | Last commit | 2026-09 | 2026-05 | 2026-05 | 2026-06 | 2026-04 | 2026-05 |
 
@@ -62,9 +62,8 @@ Corrections are welcome as issues.
 - **Breadth of Elsevier APIs.** scopus-mcp-extended covers 25 endpoints,
   including PlumX altmetrics, Embase, ScienceDirect full-text search and
   affiliation search.
-- **Author search by name.** Three alternatives have it; here it is on the
-  [roadmap](../ROADMAP.md).
-- **Installation.** elsevier-mcp installs as a Claude Code plugin and strato
-  ships a Docker image. This project is not yet on PyPI under its own name.
+- **Package registries.** strato ships a Docker image and upstream is on
+  PyPI; this project installs as a Claude Desktop extension or Claude Code
+  plugin but is not yet on PyPI under its own name.
 - **Workflow-shaped tools.** strato wraps common questions ("find experts",
   "compare documents") in single tools.

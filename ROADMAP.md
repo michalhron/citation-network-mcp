@@ -8,8 +8,9 @@ _Last updated: 2026-09-30._
 
 ## Status
 
-- 0.9.0: Phase 1 features complete and merged (PRs #2, #3). See CHANGELOG.md.
-- 17 tools. Scopus: search, `search_all`, abstracts, author profiles,
+- 0.10.0: Phase 1 complete; one-click installs for Claude Desktop (.mcpb
+  extension) and Claude Code (plugin). See CHANGELOG.md.
+- 18 tools. Scopus: search, `search_all`, abstracts, author search and profiles,
   identifiers, references, citing papers, full text. Networks:
   `bibliographic_coupling`, `co_citation`, `citation_lineage` with SPC main
   path. Bibliometrics: `publication_counts`, `get_journal_metrics`,
@@ -62,20 +63,23 @@ Every new tool gets a live smoke test before it is trusted (see Lessons).
 6. [x] **BibTeX export.** `get_bibtex`; publisher metadata via DOI content
        negotiation (errors included: Crossref spells Doreian "Dereian" for
        Hummon & Doreian 1989), generated entries for DOI-less AIS papers.
-7. [ ] **Author search by name.** Scopus Author Search (subscriber
-       entitlement), with OpenAlex authors as the `source="openalex"` option.
-       Today `get_author_profile` needs a Scopus author ID.
+7. [x] **Author search by name.** `search_authors`, Scopus and OpenAlex.
+       Live: Scopus finds E. Burton Swanson (94 documents, UCLA) plus a split
+       one-document profile; OpenAlex ranks him first by full name but cannot
+       filter by institution, so affiliation filtering covers its top 25.
 
 ## Phase 2 — Public release (only if outside users are wanted)
 
 - [ ] Choose a package name; `scopus-mcp` on PyPI belongs to upstream. Update
       authors, URLs and `mcp-name`; keep MIT and credit upstream.
-- [ ] Fix `publish.yml` first: it publishes to PyPI on any `v*` tag, under
-      upstream's name. Until then, never push version tags.
+- [x] `publish.yml` made manual-only (2026-09-30); version tags now drive
+      `release.yml`, which publishes the Claude Desktop extension. Re-enable
+      PyPI on tags once the package has its own name.
 - [ ] Split `server.py` and `utils.py` (1,200+ lines each) into tool modules.
 - [x] README around the differentiator (done 2026-09-30, ahead of Phase 2).
 - [ ] Update or drop README_CN (still the older upstream text).
-- [ ] Publish: PyPI, MCP registry (`server.json`), Claude Desktop bundle.
+- [x] Claude Desktop extension and Claude Code plugin (0.10.0).
+- [ ] Publish: PyPI and MCP registry (`server.json`), after the rename.
 
 ## Phase 3 — Research pipeline
 
@@ -85,9 +89,11 @@ skill-side, so independent of distribution.
 ## Release process
 
 Change `__version__` in `src/scopus_mcp/__init__.py` (the only place the
-version lives), move the CHANGELOG's Unreleased entries under the new
-version, merge to `main`, repin Claude Desktop to the merge commit. No tags
-until Phase 2 fixes `publish.yml`.
+version lives), run `scripts/build_extension.py` to sync the extension and
+plugin manifests, move the CHANGELOG's Unreleased entries under the new
+version, and merge to `main`. Then push the tag `vX.Y.Z`: `release.yml`
+checks it matches the version and publishes a GitHub Release with the
+`.mcpb` attached.
 
 ---
 

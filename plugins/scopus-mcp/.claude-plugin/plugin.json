@@ -1,0 +1,18 @@
+{
+  "name": "scopus-mcp",
+  "description": "Citation-network analysis on Scopus or OpenAlex: search, citations, coupling, co-citation, lineages, bibliometrics",
+  "version": "0.10.0",
+  "author": {
+    "name": "Michal Hron",
+    "url": "https://github.com/michalhron"
+  },
+  "homepage": "https://github.com/michalhron/scopus-mcp",
+  "repository": "https://github.com/michalhron/scopus-mcp",
+  "license": "MIT",
+  "keywords": [
+    "scopus",
+    "openalex",
+    "bibliometrics",
+    "citation-network"
+  ]
+}

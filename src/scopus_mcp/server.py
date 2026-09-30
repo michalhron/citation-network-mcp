@@ -10,6 +10,7 @@ from mcp.server.stdio import stdio_server
 import mcp.types as types
 
 from . import __version__
+from .authors import clean_openalex_author, clean_scopus_author, scopus_author_query
 from .bibtex import fetch_bibtex, generated_entry, make_keys_unique
 from .client import FULLTEXT_MIN_CHARS, ScopusClient
 from .journals import (
@@ -58,7 +59,21 @@ logger = logging.getLogger("scopus-mcp")
 SERVER_VERSION = __version__
 
 # Initialize Server
-server = Server("scopus-mcp")
+SERVER_INSTRUCTIONS = (
+    "Literature and citation-network tools over Scopus (default) or OpenAlex "
+    "(source='openalex'). When a Scopus call fails, especially with 'Error "
+    "translating query', run diagnose_connection: it names the tools the "
+    "current access cannot use. Without Scopus subscriber access, pass "
+    "source='openalex'. Keep one source per analysis: IDs and citation graphs "
+    "differ between them. Large results are written to files; report the paths."
+)
+
+server = Server(
+    "scopus-mcp",
+    version=__version__,
+    instructions=SERVER_INSTRUCTIONS,
+    website_url="https://github.com/michalhron/scopus-mcp",
+)
 client = ScopusClient()
 # OpenAlex backend: the same analyses without Scopus subscriber entitlement.
 openalex = OpenAlexClient()
@@ -69,6 +84,8 @@ MAX_SCOPUS_YEARS = 60
 MAX_BIBTEX = 200
 # Cap on journals per get_journal_metrics call.
 MAX_JOURNALS = 200
+# Cap on authors per search_authors call (Scopus Author Search page size).
+MAX_AUTHORS = 25
 
 SOURCE_SCHEMA = {
     "type": "string",
@@ -257,6 +274,38 @@ async def handle_list_tools() -> list[types.Tool]:
                     "source": SOURCE_SCHEMA
                 },
                 "required": ["query"]
+            }
+        ),
+        types.Tool(
+            name="search_authors",
+            description=(
+                "Find authors by name, optionally narrowed by affiliation. Scopus "
+                "(default, needs subscriber entitlement): author IDs for "
+                "get_author_profile, document counts, current affiliation, subject "
+                "areas and name variants, ranked by document count. OpenAlex: "
+                "OpenAlex author IDs, ORCID, works and citation counts, h-index, "
+                "institution and topics. Common surnames need an affiliation or "
+                "given name to be useful."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "'Surname, Given names' or 'Given names Surname', e.g. 'Swanson, E. Burton'."
+                    },
+                    "affiliation": {
+                        "type": "string",
+                        "description": "Optional affiliation words to narrow the match, e.g. 'Los Angeles'."
+                    },
+                    "count": {
+                        "type": "integer",
+                        "description": f"Number of authors to return (default 10, max {MAX_AUTHORS}).",
+                        "default": 10
+                    },
+                    "source": SOURCE_SCHEMA
+                },
+                "required": ["name"]
             }
         ),
         types.Tool(
@@ -1014,6 +1063,41 @@ async def handle_call_tool(
                 f'min_shared={min_shared}, max_citing_per_seed={max_citing}',
                 skipped, 'no citing papers or API error', source, min_shared,
             )
+
+        elif name == "search_authors":
+            author_name = (arguments.get("name") or "").strip()
+            if not author_name:
+                raise ValueError("name is required")
+            affiliation = (arguments.get("affiliation") or "").strip() or None
+            count = max(1, min(int(arguments.get("count", 10)), MAX_AUTHORS))
+
+            if _source(arguments) == 'openalex':
+                # OpenAlex cannot filter authors by institution name, so fetch a
+                # full page and keep those whose last known institution matches.
+                found = await openalex.search_authors(
+                    author_name, count=MAX_AUTHORS if affiliation else count)
+                authors = [clean_openalex_author(a) for a in found]
+                if affiliation:
+                    words = affiliation.lower().split()
+                    authors = [a for a in authors
+                               if all(w in (a['affiliation'] or '').lower() for w in words)]
+                authors = authors[:count]
+                query = author_name + (f" (affiliation contains {affiliation!r})" if affiliation else "")
+            else:
+                query = scopus_author_query(author_name, affiliation)
+                raw = await client.search_authors(query, count=count)
+                entries = (raw.get('search-results') or {}).get('entry') or []
+                authors = [clean_scopus_author(e) for e in entries
+                           if isinstance(e, dict) and e.get('dc:identifier')]
+            result = {'source': _source(arguments), 'query': query, 'authors': authors}
+            if not authors and _source(arguments) == 'openalex' and affiliation:
+                result['note'] = (
+                    f"None of the top {MAX_AUTHORS} OpenAlex matches for the name has "
+                    f"that affiliation (OpenAlex cannot filter authors by institution "
+                    f"name). Add given names to the name.")
+            elif not authors:
+                result['note'] = "No matching authors; try fewer given names or a broader affiliation."
+            return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
         elif name == "get_journal_metrics":
             raw_issns = [str(i).strip() for i in (arguments.get("issns") or []) if str(i).strip()]

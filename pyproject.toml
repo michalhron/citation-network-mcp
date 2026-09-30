@@ -52,6 +52,11 @@ addopts = "-m 'not integration'"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.uv]
+# The version lives in __init__.py (hatch dynamic version); rebuild the
+# local install when it changes, not only when pyproject.toml does.
+cache-keys = [{ file = "pyproject.toml" }, { file = "src/scopus_mcp/__init__.py" }]
+
 [tool.hatch.version]
 path = "src/scopus_mcp/__init__.py"
 

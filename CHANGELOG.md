@@ -5,6 +5,25 @@ are pushed yet (see "Release process" in ROADMAP.md).
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-09-30
+
+### Changed
+- PyPI publishing is manual only: the tag trigger would have published
+  under upstream's package name.
+
+### Added
+- Claude Desktop extension (`.mcpb`): one-click install that asks for the
+  API key and stores it securely. Built by `scripts/build_extension.py`
+  and attached to GitHub Releases by `release.yml` on version tags.
+- Claude Code plugin: `claude plugin marketplace add michalhron/scopus-mcp`,
+  then `claude plugin install scopus-mcp@michalhron`.
+- The server reports its own version to clients and sends usage
+  instructions (diagnose first, OpenAlex fallback, one source per analysis).
+- `search_authors`: find authors by name, optionally narrowed by
+  affiliation. Scopus returns author IDs for `get_author_profile`, document
+  counts, affiliation, subject areas and name variants; OpenAlex returns
+  ORCID, h-index, institution and topics.
+
 ## [0.9.0] - 2026-09-30
 
 ### Changed

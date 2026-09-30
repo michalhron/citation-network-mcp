@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 CSV_COLUMNS = [
     'scopus_id', 'title', 'creator', 'publication_name',
     'cover_date', 'doi', 'cited_by_count', 'aggregation_type', 'url',
+    'openalex_id', 'source',
 ]
 
 # Inline-vs-file threshold: result sets larger than this are written to disk.

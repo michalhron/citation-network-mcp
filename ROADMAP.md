@@ -8,7 +8,8 @@ _Last updated: 2026-09-30._
 
 ## Status
 
-- Version 0.8.1 on `feat/offnetwork-auth` (PR #2), awaiting merge into `main`.
+- Version 0.8.1 on `feat/offnetwork-auth` (PR #2), awaiting merge into `main`;
+  Phase 1 work continues on `feat/roadmap-phase1`, stacked on it.
   Claude Desktop is pinned to that branch's tip. See CHANGELOG.md.
 - 14 tools. Scopus: search, `search_all`, abstracts, author profiles,
   identifiers, references, citing papers, full text. Networks:
@@ -54,11 +55,19 @@ Every new tool gets a live smoke test before it is trusted (see Lessons).
        permanent key limit; most likely it happened off the campus network.
 2. [ ] **Harvest before end of November.** Run the lineage, reference and
        full-text pulls that "What Inherits?" and "Hype Without a Cycle" need,
-       to disk via the file-output contract. Data work, not code.
-3. [ ] **OpenAlex backend** for search, citing papers and references, so the
-       network tools keep working without Scopus entitlement. Records keep
-       their source so Scopus- and OpenAlex-derived networks are never mixed
-       silently.
+       to disk via the file-output contract. Data work, not code. More urgent
+       than planned: OpenAlex cannot replace Scopus for AIS conference papers
+       (see item 3), and coupling networks built before the 2026-09-30
+       reference-paging fix used at most 40 references per seed, so re-run
+       them.
+3. [x] **OpenAlex backend.** `source="openalex"` on search, citing papers,
+       references, coupling and co-citation; results carry OpenAlex IDs and
+       sources are never mixed. Live 2026-09-30 on four organizing-vision
+       seeds: Scopus coupling 4/4 seeds, 6 edges; OpenAlex 1/4. Two AIS
+       eLibrary papers are in OpenAlex with no reference lists (and
+       misattributed to JAIS), one ICIS paper has no exact title match.
+       Journal articles work, but thinner (Swanson 2025: 98 references in
+       OpenAlex vs 171 in Scopus). Citation-lineage support still to come.
 4. [ ] **Yearly publication counts** for a query (OpenAlex `group_by`, one
        request; Scopus per-year `totalResults` while entitled).
 5. [ ] **Journal metrics** (SJR, SNIP, CiteScore) via the Serial Title API,

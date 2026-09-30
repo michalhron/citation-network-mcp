@@ -10,6 +10,24 @@ are pushed yet (see "Release process" in ROADMAP.md).
   ScienceDirect full text (a subscription canary, so open access cannot pass
   for entitlement) and Serial Title. Reports `unavailable_tools`, the tools
   that cannot work with the current access.
+- OpenAlex backend: `source="openalex"` on `search_all`, `get_citing_papers`,
+  `get_references`, `bibliographic_coupling` and `co_citation`. Needs no
+  Scopus entitlement. Accepts DOIs, OpenAlex work IDs, or Scopus IDs
+  (resolved to a DOI through Scopus metadata, or by exact title within one
+  year when the record has no DOI). Search matches title and abstract.
+- Optional `OPENALEX_API_KEY` (environment, OS secret store account
+  `openalex_api_key`, or `config.json`), sent as a Bearer header. A free key
+  raises OpenAlex's daily budget from $0.10 to $1; errors report the
+  remaining budget.
+- Results CSV gains `openalex_id` and `source` columns.
+
+### Fixed
+- `get_references` returned at most 40 references (the REF view's page
+  size), which also truncated `bibliographic_coupling` and backward
+  `citation_lineage`. It now pages through the full list. Re-run coupling
+  networks built before this fix.
+- Scopus `bibliographic_coupling` labelled seeds by ID when the REF view
+  carried no title; it now falls back to the abstract.
 
 ## [0.8.1] - 2026-09-30
 

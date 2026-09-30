@@ -144,6 +144,20 @@ def get_insttoken() -> Optional[str]:
     return token
 
 
+def resolve_openalex_key() -> Tuple[Optional[str], Optional[str]]:
+    """
+    Returns (key, source) for the optional OpenAlex API key, labelled as in
+    resolve_api_key.  Precedence:
+    1. Environment variable 'OPENALEX_API_KEY'
+    2. OS secret store, service 'scopus-mcp', account 'openalex_api_key'
+    3. config.json 'openalex_api_key' field
+
+    OpenAlex works without a key on a small anonymous daily budget; a free
+    account key raises it tenfold.
+    """
+    return _resolve(('OPENALEX_API_KEY',), 'openalex_api_key')
+
+
 PROXY_SCHEMES = ('http', 'https', 'socks5', 'socks5h')
 
 

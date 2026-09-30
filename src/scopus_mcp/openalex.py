@@ -109,6 +109,10 @@ def indexed_name(display_name: Optional[str]) -> Optional[str]:
     return f"{parts[-1]} {initials}".strip()
 
 
+def _and(filter_expr: str, extra: Optional[str]) -> str:
+    return f'{filter_expr},{extra}' if extra else filter_expr
+
+
 def clean_openalex_work(work: Dict[str, Any]) -> Dict[str, Any]:
     """Normalize an OpenAlex work to the Scopus-cleaner record shape."""
     authorships = work.get('authorships') or []
@@ -307,16 +311,19 @@ class OpenAlexClient:
         }
 
     async def search(self, query: str, max_results: int = 200,
-                     sort: str = 'relevance') -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
-        """Title-and-abstract search."""
+                     sort: str = 'relevance',
+                     extra_filter: Optional[str] = None) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+        """Title-and-abstract search; extra_filter is ANDed (e.g. an ISSN scope)."""
         return await self.list_works(
-            f'title_and_abstract.search:{_search_value(query)}', max_results, sort,
+            _and(f'title_and_abstract.search:{_search_value(query)}', extra_filter),
+            max_results, sort,
         )
 
     async def citing(self, work_id: str, max_results: int = 200,
-                     sort: str = 'coverDate') -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+                     sort: str = 'coverDate',
+                     extra_filter: Optional[str] = None) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         """Works that cite `work_id` (an OpenAlex W-id)."""
-        return await self.list_works(f'cites:{work_id}', max_results, sort)
+        return await self.list_works(_and(f'cites:{work_id}', extra_filter), max_results, sort)
 
     async def works_by_ids(self, work_ids: List[str]) -> List[Dict[str, Any]]:
         """Hydrate W-ids in batches of ID_BATCH (1 credit per batch)."""

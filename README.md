@@ -14,9 +14,13 @@ fronts and intellectual bases, and pull the counts, metrics and bibliography
 you need, from a conversation. It is an [MCP](https://modelcontextprotocol.io)
 server, so any MCP client can use it: Claude Desktop, Claude Code, Cursor.
 
-- 🕸️ **Citation networks.** Bibliographic coupling, co-citation, and
-  multi-generation citation lineages with main-path analysis, exported as
-  GraphML for VOSviewer or Gephi.
+- 🕸️ **Citation networks.** Bibliographic coupling, co-citation,
+  multi-generation citation lineages, and the citation network within any
+  set of papers, with main path and key routes, exported for Pajek,
+  VOSviewer or Gephi.
+- 🧾 **Audited, not just built.** Citer sets verified across search
+  strategies, reference lists checked against Crossref for gaps, and the
+  sentences behind each citation, with their intent, from Semantic Scholar.
 - 🔀 **Two data sources.** Scopus by default; add `source="openalex"` to run
   the same analyses without a Scopus subscription.
 - 📊 **Bibliometrics.** Where a topic is published and in which quartile per
@@ -26,7 +30,7 @@ server, so any MCP client can use it: Claude Desktop, Claude Code, Cursor.
   and see how often and where each one uses it.
 - 🩺 **Honest about access.** One call tells you which tools your current
   Scopus access supports, and why the rest fail.
-- ✅ **Tested.** 167 test functions, CI on Linux, macOS and Windows, and a
+- ✅ **Tested.** 443 test functions, CI on Linux, macOS and Windows, and a
   live check of every tool against the real APIs.
 
 How it compares with the other Scopus MCP servers: **[comparison](docs/comparison.md)**.
@@ -36,6 +40,8 @@ How it compares with the other Scopus MCP servers: **[comparison](docs/compariso
 > *Map the research front around these six papers on organizing visions.*
 >
 > *Trace two generations of work citing Swanson & Ramiller (1997) and show me the main path.*
+>
+> *Build the citation network of every Basket of Eight paper citing the organizing-vision papers, and show how the main path cites its predecessors.*
 >
 > *How has publishing on "digital transformation" grown since 2010?*
 >
@@ -47,7 +53,8 @@ How it compares with the other Scopus MCP servers: **[comparison](docs/compariso
 | --- | --- |
 | **Search and records** | `search_scopus` · `search_all` · `search_fulltext` · `get_abstract_details` · `resolve_identifier` · `search_authors` · `get_author_profile` · `get_fulltext` |
 | **Citations** | `get_references` · `get_citing_papers` |
-| **Networks** | `bibliographic_coupling` · `co_citation` · `citation_lineage` |
+| **Networks** | `bibliographic_coupling` · `co_citation` · `citation_lineage` · `citation_network` |
+| **Audit** | `resolve_citers` · `citation_context` |
 | **Bibliometrics** | `publication_counts` · `topic_landscape` · `get_journal_metrics` · `find_journals` · `get_bibtex` |
 | **Diagnostics** | `diagnose_connection` · `get_quota_status` · `get_server_info` |
 

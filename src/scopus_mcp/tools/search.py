@@ -11,6 +11,7 @@ from ..fulltext_search import PAGE_SIZE as SD_PAGE_SIZE, analyze_mentions, build
 from ..openalex import clean_openalex_work
 from ..output import should_write_to_disk, write_fulltext_to_disk, write_results_to_disk
 from ..records import _fetch_abstract_crossref, _fetch_abstract_openalex, clean_abstract_details, clean_author_profile, clean_identifiers, clean_search_results, detect_id_type
+from ..baskets import SCOPE_SCHEMA, openalex_issn_filter, resolve_scope, scope_scopus_query
 from .common import SOURCE_SCHEMA, _source, server_module
 
 logger = logging.getLogger("scopus-plus-mcp")
@@ -86,7 +87,22 @@ TOOLS = [
                         "Defaults to 'coverDate' for Scopus, 'relevance' for OpenAlex."
                     )
                 },
-                "source": SOURCE_SCHEMA
+                "source": SOURCE_SCHEMA,
+                "scope": SCOPE_SCHEMA,
+                "inline": {
+                    "type": "string",
+                    "enum": ["sample", "compact", "full"],
+                    "default": "sample",
+                    "description": (
+                        "What comes back in the reply when results go to files "
+                        "(over 50 records). 'sample' (default): the first 10. "
+                        "'compact': every record as one JSON line of key fields "
+                        "(IDs, DOI, year, first author, title, venue, ISSN, "
+                        "citations): use it when the caller cannot read the "
+                        "server's files, e.g. from a cloud session. 'full': "
+                        "every record in full (large)."
+                    )
+                }
             },
             "required": ["query"]
         }
@@ -261,6 +277,22 @@ async def _search_scopus(arguments: dict) -> list:
     return [types.TextContent(type="text", text=str(results))]
 
 
+COMPACT_FIELDS = ('scopus_id', 'openalex_id', 'doi', 'year', 'creator', 'title',
+                  'publication_name', 'issn', 'cited_by_count')
+
+
+def compact_lines(records: list) -> str:
+    """One JSON object per record with only the key fields (None dropped)."""
+    import json
+    out = []
+    for r in records:
+        row = {k: r.get(k) for k in COMPACT_FIELDS if r.get(k) not in (None, '')}
+        if not row.get('year') and r.get('cover_date'):
+            row['year'] = str(r['cover_date'])[:4]
+        out.append(json.dumps(row, ensure_ascii=False))
+    return '\n'.join(out)
+
+
 async def _search_all(arguments: dict) -> list:
     srv = server_module()
     client = srv.client
@@ -272,28 +304,43 @@ async def _search_all(arguments: dict) -> list:
     if not query:
         raise ValueError("query is required")
 
+    inline = arguments.get("inline") or "sample"
+    if inline not in ("sample", "compact", "full"):
+        raise ValueError("inline must be 'sample', 'compact' or 'full'")
+    issns = resolve_scope(arguments.get("scope"))
+
     if source == 'openalex':
         sort = arguments.get("sort", "relevance")
-        works, meta = await openalex.search(query, max_results=max_results, sort=sort)
+        kwargs = {'extra_filter': openalex_issn_filter(issns)} if issns else {}
+        works, meta = await openalex.search(query, max_results=max_results, sort=sort, **kwargs)
         results = [clean_openalex_work(w) for w in works]
     else:
         sort = arguments.get("sort", "coverDate")
+        query = scope_scopus_query(query, issns)
         raw_data = await client.search_all(query, max_results=max_results, sort=sort)
         results = clean_search_results(raw_data)
         meta = raw_data.get('_meta', {})
 
     if should_write_to_disk(results):
         paths = write_results_to_disk(results, query)
-        sample = results[:10]
-        text = (
+        head = (
             f"Fetched {meta.get('total_fetched', len(results))} records "
             f"(total available: {meta.get('total_available', 'unknown')}, "
             f"truncated: {meta.get('truncated', False)}).\n"
             f"Full results written to disk:\n"
             f"  JSON: {paths['json_path']}\n"
             f"  CSV:  {paths['csv_path']}\n\n"
-            f"First 10 records:\n{sample}"
         )
+        if inline == 'compact':
+            body = (f"All {len(results)} records, one JSON object per line "
+                    f"(fields: {', '.join(COMPACT_FIELDS)}):\n"
+                    + compact_lines(results))
+        elif inline == 'full':
+            body = f"All {len(results)} records:\n{results}"
+        else:
+            body = (f"First 10 records (inline='compact' returns all of them):\n"
+                    f"{results[:10]}")
+        text = head + body
     else:
         text = str(results)
 

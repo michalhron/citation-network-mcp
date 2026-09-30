@@ -25,6 +25,8 @@ Search Scopus (or OpenAlex with source='openalex') and page through results auto
 | `query` | string | required | Search query. Scopus: Scopus syntax (e.g., 'TITLE(AI) AND PUBYEAR > 2020'). OpenAlex: plain words matched against title and abstract; quote phrases (e.g., '"organizing vision"'). |
 | `max_results` | integer | 200 | Maximum total results to fetch across all pages (default 200). Large values consume quota. |
 | `sort` | string |  | Sort order (e.g., 'coverDate', 'relevancy', 'citedby'). Defaults to 'coverDate' for Scopus, 'relevance' for OpenAlex. |
+| `scope` |  |  | Restrict to journals, by ISSN: a list of ISSNs, or a basket name ('basket_of_eight' / 'ais8': the AIS Senior Scholars' Basket of Eight). ISSNs are used rather than journal names, which Scopus spells inconsistently. |
+| `inline` | `sample` \| `compact` \| `full` | sample | What comes back in the reply when results go to files (over 50 records). 'sample' (default): the first 10. 'compact': every record as one JSON line of key fields (IDs, DOI, year, first author, title, venue, ISSN, citations): use it when the caller cannot read the server's files, e.g. from a cloud session. 'full': every record in full (large). |
 
 ### `search_fulltext`
 
@@ -95,7 +97,9 @@ Retrieve the cited-reference list of a document (Backward Citations) via the Abs
 | Parameter | Type | Default | Description |
 | --- | --- | --- | --- |
 | `scopus_id` | string | required | The Scopus ID (or EID) of the document whose references to retrieve. With source='openalex', a DOI or OpenAlex work ID also works. |
-| `count` | integer | 25 | Maximum number of references to return (default 25). |
+| `count` | integer | 25 | Maximum number of references to return (default 25). The reply always states how many the document has, and whether the list was cut. |
+| `filter_ids` | list of string |  | Return only references whose Scopus ID, EID, DOI (or, with source='openalex', OpenAlex ID) is in this list: the within-set edges of a corpus without the full reference records. count does not apply. |
+| `check_completeness` | boolean | False | Compare the retrieved list with the reference count the publisher deposited at Crossref, and flag lists that look short (default false; one Crossref request). |
 
 ### `get_citing_papers` · **OpenAlex**
 
@@ -140,6 +144,46 @@ Walk the citation lineage of a seed paper across multiple generations. Forward: 
 | `min_citing` | integer | 0 | Only expand papers that have at least this many citing papers (default 0 = expand all up to max_per_node). Pruning high values avoids exploding on trivially-cited nodes. Ignored for backward direction. |
 | `direction` | `forward` \| `backward` | forward | 'forward' (default): walk citing papers via search_all + REF(). Fan-out can be large; use max_per_node to bound quota. 'backward': walk cited references via get_references, up to max_per_node per paper; references with no ID are skipped. |
 | `sort` | `citedby` \| `coverDate` \| `relevancy` | citedby | How to rank citing papers before the max_per_node cap is applied (forward direction only; ignored for backward). 'citedby' (default): highest citation count first — captures the high-flow backbone. 'coverDate': most recent first — captures the current fringe but may produce a recency-dominated walk on high-citation seeds. 'relevancy': Scopus relevance score (Scopus only). |
+| `scope` |  |  | Forward walks only: keep citing papers from these journals (ISSN list, or 'basket_of_eight'/'ais8'). The filter goes into the search, so max_per_node counts in-scope papers only. Restrict to journals, by ISSN: a list of ISSNs, or a basket name ('basket_of_eight' / 'ais8': the AIS Senior Scholars' Basket of Eight). ISSNs are used rather than journal names, which Scopus spells inconsistently. |
+
+### `citation_network` · **OpenAlex**
+
+Direct-citation network within a set of papers, in one call: fetches every paper's reference list, keeps only the references to other papers in the set, and runs main-path analysis (SPC weights, local and global main path, key routes). Flags papers whose reference list looks short against the Crossref count, since they silently lose edges. Give ids (Scopus IDs/EIDs; with source='openalex', DOIs or OpenAlex IDs) or a query. Writes the corpus as JSON, the network as Pajek .net (arcs run from cited to citing paper, weighted by SPC; opens in Pajek, VOSviewer and Gephi) and an edge CSV. Cost: one reference request per paper (cached).
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `ids` | list of string |  | The papers (up to 1000). Use this or query. |
+| `query` | string |  | Search query defining the set, instead of ids. |
+| `max_results` | integer | 300 | With query: how many papers to include (default 300). |
+| `scope` |  |  | Restrict to journals, by ISSN: a list of ISSNs, or a basket name ('basket_of_eight' / 'ais8': the AIS Senior Scholars' Basket of Eight). ISSNs are used rather than journal names, which Scopus spells inconsistently. |
+| `key_routes` | integer | 10 | Number of top-SPC key edges to extend into key-route main paths (Liu & Lu 2012; default 10, 0 = none). |
+| `check_completeness` | boolean | True | Compare each reference list with the Crossref reference count (default true; one Crossref request per DOI). |
+| `inline` | `summary` \| `edges` \| `full` | edges | What the reply carries besides the file paths. 'summary': counts, flags and paths. 'edges' (default): also every edge as a compact line (up to 2,000). 'full': the whole corpus as JSON, for callers that cannot read the server's files (cloud sessions). |
+
+## Audit
+
+### `resolve_citers` · **OpenAlex**
+
+All papers citing one or more seed papers, found by several search strategies at once and verified. Runs REF() on each seed plus any extra queries (for example a title-phrase query), merges the hits, then checks each hit's own reference list for the seeds. Reports what each strategy found and missed, hits that cite no seed (false positives, or a truncated reference list), and the confirmed set. Scopus cost: one search page per 25 hits per strategy, plus one reference request per hit when verify is on (cached, and reused by citation_network).
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `seed_ids` | list of string | required | Seed papers (Scopus IDs/EIDs; with source='openalex', DOIs or OpenAlex IDs), e.g. both papers of a construct's origin. |
+| `queries` | list of string |  | Extra search strategies, e.g. REF("organizing vision") or REFAUTH(swanson) AND REFTITLE("organizing vision"). |
+| `scope` |  |  | Restrict to journals, by ISSN: a list of ISSNs, or a basket name ('basket_of_eight' / 'ais8': the AIS Senior Scholars' Basket of Eight). ISSNs are used rather than journal names, which Scopus spells inconsistently. |
+| `verify` | boolean | True | Check each hit's reference list for the seeds (default true). |
+| `max_results` | integer | 1000 | Cap on hits per strategy (default 1000). |
+| `inline` | `summary` \| `compact` | compact | 'compact' (default): every hit as one JSON line (ID, DOI, year, title, seeds cited, strategies). 'summary': counts only. |
+
+### `citation_context`
+
+How one paper cites another: the citing sentences, the citation intent (background, methodology, result) and whether Semantic Scholar classes the citation as influential. Evidence for whether a citation edge carries the cited idea or is a passing mention. Up to 50 pairs per call; IDs are DOIs, Scopus IDs or OpenAlex IDs. Contexts are missing for some publishers, and for papers Semantic Scholar does not hold.
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `citing` | string |  | The citing paper (single pair). |
+| `cited` | string |  | The cited paper (single pair). |
+| `pairs` | list of object |  | Several [citing, cited] pairs, instead of citing/cited. |
 
 ## Bibliometrics and bibliography
 

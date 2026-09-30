@@ -4,8 +4,16 @@ import mcp.types as types
 
 from ..openalex import clean_openalex_work, short_id
 from ..graphs import _make_node_label, compute_pairwise_edges, write_graph_to_disk
-from ..lineage import compute_main_path, render_lineage_html, render_lineage_png, write_lineage_to_disk
-from ..output import _query_slug
+from ..baskets import SCOPE_SCHEMA, openalex_issn_filter, resolve_scope, scope_scopus_query
+from ..lineage import (
+    _rec_key,
+    compute_main_path,
+    render_lineage_html,
+    render_lineage_png,
+    write_lineage_to_disk,
+    write_pajek,
+)
+from ..output import _output_dir, _query_slug
 from ..records import clean_abstract_details, clean_references, clean_search_results, to_eid, to_scopus_id
 from .common import SOURCE_SCHEMA, _resolve_openalex_work, _source, server_module
 
@@ -242,6 +250,15 @@ TOOLS = [
                     ),
                     "enum": ["citedby", "coverDate", "relevancy"],
                     "default": "citedby"
+                },
+                "scope": {
+                    **SCOPE_SCHEMA,
+                    "description": (
+                        "Forward walks only: keep citing papers from these journals "
+                        "(ISSN list, or 'basket_of_eight'/'ais8'). The filter goes "
+                        "into the search, so max_per_node counts in-scope papers "
+                        "only. " + SCOPE_SCHEMA["description"]
+                    ),
                 }
             },
             "required": ["seed_id"]
@@ -399,6 +416,9 @@ async def _citation_lineage(arguments: dict) -> list:
         raise ValueError(f"sort must be one of {list(_SORT_MAP)}")
     api_sort = _SORT_MAP[sort_arg]
     source = _source(arguments)
+    scope_issns = resolve_scope(arguments.get("scope"))
+    if scope_issns and direction != 'forward':
+        raise ValueError("scope applies to forward walks only; references carry no ISSN.")
     if source == 'openalex' and sort_arg == 'relevancy':
         raise ValueError(
             "sort='relevancy' is Scopus-only; OpenAlex cannot rank citing "
@@ -463,8 +483,10 @@ async def _citation_lineage(arguments: dict) -> list:
         """
         if source == 'openalex':
             if direction == 'forward':
+                scoped = ({'extra_filter': openalex_issn_filter(scope_issns)}
+                          if scope_issns else {})
                 works, _ = await openalex.citing(
-                    parent_id, max_results=max_per_node, sort=sort_arg)
+                    parent_id, max_results=max_per_node, sort=sort_arg, **scoped)
             else:
                 # Singleton lookups are free and cached; hydrating the
                 # reference list costs one request per 50 references.
@@ -489,7 +511,7 @@ async def _citation_lineage(arguments: dict) -> list:
             return result
         if direction == 'forward':
             raw = await client.search_all(
-                f"REF({to_eid(parent_id)})",
+                scope_scopus_query(f"REF({to_eid(parent_id)})", scope_issns),
                 max_results=max_per_node,
                 sort=api_sort,
             )
@@ -619,6 +641,13 @@ async def _citation_lineage(arguments: dict) -> list:
     )
     html_path = render_lineage_html(records_list, main_path_ids, seed_id, base_fname)
     png_path = render_lineage_png(records_list, main_path_ids, seed_id, base_fname)
+    net_path = write_pajek(
+        [{'id': _rec_key(r), 'label': _make_node_label(r, _rec_key(r))}
+         for r in records_list if _rec_key(r)],
+        [{'source': e['source'], 'target': e['target'], 'weight': e['spc_weight']}
+         for e in spc_edges],
+        _output_dir() / f'{base_fname}.net',
+    )
 
     # Inline corpus as base64 so sandboxed callers can access it
     # without host filesystem access.
@@ -726,6 +755,15 @@ async def _citation_lineage(arguments: dict) -> list:
                 "SPC arc weights: NOT computed (no edges in lineage graph; "
                 "main path is unweighted).\n"
             )
+        text += f"Pajek network (SPC-weighted arcs): {net_path}\n"
+        if scope_issns:
+            text += f"Scope: citing papers restricted to {len(scope_issns)} ISSNs.\n"
+        if mp_result.get('removed_cycle_edges'):
+            removed = mp_result['removed_cycle_edges']
+            text += (f"Cycles: removed {len(removed)} citation edge(s) running against "
+                     "publication order: " + ", ".join(
+                         f"{e['source']}→{e['target']}" for e in removed[:10])
+                     + (" ..." if len(removed) > 10 else "") + "\n")
         if html_path:
             text += f"Interactive HTML: {html_path}\n"
         if png_path:

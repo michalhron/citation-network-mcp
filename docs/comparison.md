@@ -50,8 +50,13 @@ Corrections are welcome as issues.
 - **Citation networks.** It is the only one that builds bibliographic
   coupling and co-citation networks, and the only one that walks a
   multi-generation citation lineage and extracts its main path
-  (search-path-count, Batagelj 2003). Networks come out as GraphML for
+  (search-path-count, Batagelj 2003) and key routes, for a lineage or for
+  any set of papers. Networks come out as GraphML and Pajek `.net` for
   VOSviewer, Gephi or Pajek.
+- **Auditing a citation network.** It is the only one that verifies a
+  citer set across search strategies, flags reference lists that are short
+  against Crossref (papers that would silently lose edges), and returns the
+  citing sentences and citation intent behind an edge (Semantic Scholar).
 - **Review scoping by field and prestige.** It is the only one that reports
   journal percentiles per subject category, lists the journals above a
   percentile cut-off in chosen categories as a ready Scopus query, and maps

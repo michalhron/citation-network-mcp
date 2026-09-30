@@ -46,6 +46,7 @@ def clean_search_results(data: Dict[str, Any]) -> List[Dict[str, Any]]:
             'publication_name': entry.get('prism:publicationName'),
             'cover_date': entry.get('prism:coverDate'),
             'doi': entry.get('prism:doi'),
+            'issn': entry.get('prism:issn') or entry.get('prism:eIssn'),
             'cited_by_count': entry.get('citedby-count'),
             'aggregation_type': entry.get('prism:aggregationType'),
             'url': next((link['@href'] for link in entry.get('link', []) if link.get('@ref') == 'scopus'), None)
@@ -277,6 +278,18 @@ def clean_identifiers(data: Dict[str, Any]) -> Dict[str, Any]:
         'cover_date': core.get('prism:coverDate'),
         'cited_by_count': core.get('citedby-count'),
     }
+
+
+def reported_reference_total(data: Dict[str, Any]) -> Optional[int]:
+    """'@total-references' of a REF-view response, or None."""
+    root = data.get('abstracts-retrieval-response') or data.get('abstract-retrieval-response') or {}
+    block = root.get('references')
+    if not isinstance(block, dict):
+        return None
+    try:
+        return int(block.get('@total-references'))
+    except (TypeError, ValueError):
+        return None
 
 
 def clean_references(data: Dict[str, Any], limit: Optional[int] = None) -> List[Dict[str, Any]]:

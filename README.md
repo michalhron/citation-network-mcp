@@ -5,6 +5,7 @@
 **Citation-network analysis for Claude and other AI assistants, on Scopus or OpenAlex.**
 
 [![Tests](https://github.com/michalhron/citation-network-mcp/actions/workflows/test.yml/badge.svg)](https://github.com/michalhron/citation-network-mcp/actions/workflows/test.yml)
+[![PyPI](https://img.shields.io/pypi/v/citation-network-mcp)](https://pypi.org/project/citation-network-mcp/)
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 
@@ -78,7 +79,7 @@ Then make your key available, either in your shell
   "mcpServers": {
     "citation-network": {
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/michalhron/citation-network-mcp.git", "citation-network-mcp"],
+      "args": ["citation-network-mcp"],
       "env": { "SCOPUS_API_KEY": "YOUR_KEY" }
     }
   }

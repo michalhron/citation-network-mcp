@@ -5,6 +5,10 @@ are pushed yet (see "Release process" in ROADMAP.md).
 
 ## [Unreleased]
 
+### Changed
+- Installs from PyPI: `uvx citation-network-mcp` in the README and the
+  Claude Code plugin, now that 0.11.0 is on PyPI and in the MCP registry.
+
 ## [0.11.0] - 2026-09-30
 
 ### Changed

@@ -26,6 +26,22 @@ Search Scopus (or OpenAlex with source='openalex') and page through results auto
 | `max_results` | integer | 200 | Maximum total results to fetch across all pages (default 200). Large values consume quota. |
 | `sort` | string |  | Sort order (e.g., 'coverDate', 'relevancy', 'citedby'). Defaults to 'coverDate' for Scopus, 'relevance' for OpenAlex. |
 
+### `search_fulltext`
+
+Search the full text of Elsevier (ScienceDirect) journal articles, not just titles and abstracts: finds papers that use a construct in their body without naming it up front. Needs Scopus/ScienceDirect subscriber access; covers Elsevier-published content only. With context=true, the top results' full texts are retrieved to count mentions in the body (separately from the reference list), give their positions through the article, and quote example sentences: how a paper uses the construct, not just that it does. Up to 1000 results; over 50 are written to JSON and CSV.
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `query` | string | required | ScienceDirect query; quote phrases, e.g. '"organizing vision"'. AND, OR, NOT allowed. |
+| `journal` | string |  | Restrict to a journal title, e.g. 'Information and Organization'. |
+| `from_year` | integer |  | First publication year. |
+| `to_year` | integer |  | Last publication year. |
+| `open_access_only` | boolean | False |  |
+| `max_results` | integer | 100 | Results to fetch (default 100, max 1000). |
+| `sort` | `relevance` \| `date` | relevance |  |
+| `context` | boolean | False | Analyse mentions in the top results' full texts. |
+| `max_context` | integer | 10 | Articles to analyse when context=true (default 10, max 25); one full-text request each. |
+
 ### `get_abstract_details`
 
 Retrieve full details for a specific document by Scopus ID.

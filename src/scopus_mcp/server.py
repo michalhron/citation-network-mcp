@@ -13,6 +13,8 @@ from . import __version__
 from .authors import clean_openalex_author, clean_scopus_author, scopus_author_query
 from .bibtex import fetch_bibtex, generated_entry, make_keys_unique
 from .client import FULLTEXT_MIN_CHARS, ScopusClient
+from .fulltext_search import PAGE_SIZE as SD_PAGE_SIZE
+from .fulltext_search import analyze_mentions, build_request, clean_result as clean_sd_result
 from .journals import (
     clean_openalex_source,
     clean_serial_entry,
@@ -86,6 +88,9 @@ MAX_BIBTEX = 200
 MAX_JOURNALS = 200
 # Cap on authors per search_authors call (Scopus Author Search page size).
 MAX_AUTHORS = 25
+# search_fulltext: results per call, and articles whose full text is analysed.
+MAX_FULLTEXT_RESULTS = 1000
+MAX_CONTEXT = 25
 
 SOURCE_SCHEMA = {
     "type": "string",
@@ -272,6 +277,41 @@ async def handle_list_tools() -> list[types.Tool]:
                         )
                     },
                     "source": SOURCE_SCHEMA
+                },
+                "required": ["query"]
+            }
+        ),
+        types.Tool(
+            name="search_fulltext",
+            description=(
+                "Search the full text of Elsevier (ScienceDirect) journal articles, "
+                "not just titles and abstracts: finds papers that use a construct in "
+                "their body without naming it up front. Needs Scopus/ScienceDirect "
+                "subscriber access; covers Elsevier-published content only. With "
+                "context=true, the top results' full texts are retrieved to count "
+                "mentions in the body (separately from the reference list), give "
+                "their positions through the article, and quote example sentences: "
+                "how a paper uses the construct, not just that it does. "
+                f"Up to {MAX_FULLTEXT_RESULTS} results; over 50 are written to JSON and CSV."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "ScienceDirect query; quote phrases, e.g. '\"organizing vision\"'. AND, OR, NOT allowed."
+                    },
+                    "journal": {"type": "string", "description": "Restrict to a journal title, e.g. 'Information and Organization'."},
+                    "from_year": {"type": "integer", "description": "First publication year."},
+                    "to_year": {"type": "integer", "description": "Last publication year."},
+                    "open_access_only": {"type": "boolean", "default": False},
+                    "max_results": {"type": "integer", "default": 100,
+                                    "description": f"Results to fetch (default 100, max {MAX_FULLTEXT_RESULTS})."},
+                    "sort": {"type": "string", "enum": ["relevance", "date"], "default": "relevance"},
+                    "context": {"type": "boolean", "default": False,
+                                "description": "Analyse mentions in the top results' full texts."},
+                    "max_context": {"type": "integer", "default": 10,
+                                    "description": f"Articles to analyse when context=true (default 10, max {MAX_CONTEXT}); one full-text request each."}
                 },
                 "required": ["query"]
             }
@@ -1063,6 +1103,70 @@ async def handle_call_tool(
                 f'min_shared={min_shared}, max_citing_per_seed={max_citing}',
                 skipped, 'no citing papers or API error', source, min_shared,
             )
+
+        elif name == "search_fulltext":
+            query = (arguments.get("query") or "").strip()
+            if not query:
+                raise ValueError("query is required")
+            max_results = max(1, min(int(arguments.get("max_results", 100)), MAX_FULLTEXT_RESULTS))
+            sort = arguments.get("sort") or "relevance"
+            if sort not in ("relevance", "date"):
+                raise ValueError("sort must be 'relevance' or 'date'")
+            filters = dict(
+                journal=(arguments.get("journal") or "").strip() or None,
+                from_year=arguments.get("from_year"), to_year=arguments.get("to_year"),
+                open_access_only=bool(arguments.get("open_access_only", False)),
+            )
+
+            results, total = [], None
+            while len(results) < max_results:
+                page = await client.search_sciencedirect(build_request(
+                    query, offset=len(results),
+                    show=min(SD_PAGE_SIZE, max_results - len(results)), sort=sort, **filters))
+                if total is None:
+                    total = page.get('resultsFound')
+                batch = [clean_sd_result(e) for e in (page.get('results') or [])]
+                if not batch:
+                    break
+                results.extend(batch)
+            results = results[:max_results]
+
+            summary = {
+                'source': 'sciencedirect', 'query': query, 'total_available': total,
+                'fetched': len(results),
+                'note': "Full-text matches in Elsevier-published articles only.",
+            }
+            if arguments.get("context"):
+                limit = max(1, min(int(arguments.get("max_context", 10)), MAX_CONTEXT))
+                analysed = []
+                for rec in results[:limit]:
+                    entry = {'doi': rec['doi'], 'title': rec['title']}
+                    try:
+                        sd = await client.get_sciencedirect_fulltext(rec['doi']) if rec['doi'] else None
+                    except Exception as exc:
+                        sd = None
+                        entry['error'] = str(exc)[:200]
+                    text = ((sd or {}).get('full-text-retrieval-response') or {}).get('originalText') or ''
+                    if len(text.strip()) >= FULLTEXT_MIN_CHARS:
+                        entry.update(analyze_mentions(text, query))
+                    else:
+                        entry.setdefault('error', "full text not available with this access")
+                    analysed.append(entry)
+                summary['context'] = analysed
+                summary['context_note'] = (
+                    "body_mentions exclude the reference list; positions_pct run "
+                    "0-100 through the article before its references. The lowest "
+                    "positions can be the abstract or keyword list rather than the "
+                    "text; 0 body mentions with reference-list mentions means the "
+                    "paper cites the work without using the term.")
+
+            if should_write_to_disk(results):
+                paths = write_results_to_disk(results, f"fulltext {query}")
+                summary.update({'json_path': paths['json_path'], 'csv_path': paths['csv_path'],
+                                'sample': results[:10]})
+            else:
+                summary['results'] = results
+            return [types.TextContent(type="text", text=json.dumps(summary, indent=2, ensure_ascii=False))]
 
         elif name == "search_authors":
             author_name = (arguments.get("name") or "").strip()

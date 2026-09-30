@@ -5,7 +5,16 @@ are pushed yet (see "Release process" in ROADMAP.md).
 
 ## [Unreleased]
 
+### Added
+- `search_fulltext`: full-text search of Elsevier (ScienceDirect) articles,
+  paged up to 1,000 results. With `context=true` it retrieves the top
+  results' full texts and reports body mentions separately from the
+  reference list, their positions through the article, and example
+  sentences, so citing without using a term is visible.
+
 ### Changed
+- ScienceDirect searches (PUT with a JSON body) are cached and retried like
+  GET requests.
 - Installs from PyPI: `uvx citation-network-mcp` in the README and the
   Claude Code plugin, now that 0.11.0 is on PyPI and in the MCP registry.
 

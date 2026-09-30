@@ -70,6 +70,10 @@
       "description": "Search Scopus (or OpenAlex with source='openalex') and page through results automatically, returning up to max_results entries in one call."
     },
     {
+      "name": "search_fulltext",
+      "description": "Search the full text of Elsevier (ScienceDirect) journal articles, not just titles and abstracts: finds papers that use a construct in their body without naming it up front."
+    },
+    {
       "name": "search_authors",
       "description": "Find authors by name, optionally narrowed by affiliation."
     },

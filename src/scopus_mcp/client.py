@@ -1,3 +1,4 @@
+import json
 import logging
 import asyncio
 import math
@@ -79,7 +80,8 @@ CAPABILITY_TOOLS = {
                'publication_counts (Scopus)', 'search_authors (Scopus)'],
     'references': ['get_references', 'bibliographic_coupling',
                    'citation_lineage (backward)'],
-    'fulltext': ['get_fulltext (ScienceDirect step; falls back to OA/abstract)'],
+    'fulltext': ['get_fulltext (ScienceDirect step; falls back to OA/abstract)',
+                 'search_fulltext'],
     'serial_title': ['get_journal_metrics (Scopus)'],
 }
 
@@ -131,28 +133,36 @@ class ScopusClient:
         """Returns the latest known quota status."""
         return self.quota_info
 
-    async def _request(self, method: str, endpoint: str, params: Optional[Dict[str, Any]] = None, use_cache: bool = True, ttl: Optional[int] = None) -> Dict[str, Any]:
+    async def _request(self, method: str, endpoint: str, params: Optional[Dict[str, Any]] = None, use_cache: bool = True, ttl: Optional[int] = None, json_body: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Internal method to handle API requests with caching, rate limiting, and retries.
+        json_body is sent as a JSON request body (ScienceDirect search is a PUT).
         """
         url = urljoin(BASE_URL, endpoint)
-        
+        # GET and PUT are idempotent: safe to cache and to replay. Elsevier
+        # uses PUT for ScienceDirect search, so the body is part of the key.
+        idempotent = method.upper() in ('GET', 'PUT')
+        cache_params = params
+        if json_body is not None:
+            cache_params = {**(params or {}), '__body': json.dumps(json_body, sort_keys=True)}
+
         # Check cache (Synchronous cache access is fast enough)
-        if use_cache and method.upper() == 'GET':
-            cached = self.cache.get(url, params)
+        if use_cache and idempotent:
+            cached = self.cache.get(url, cache_params)
             if cached:
                 logger.debug(f"Cache hit for {url}")
                 return cached
 
-        # Retries apply to GET only (all Scopus endpoints here are GET);
-        # POSTs would not be safe to replay.
-        can_retry = method.upper() == 'GET'
+        can_retry = idempotent
         attempt = 1
         max_attempts = (1 + self.max_retries) if can_retry else 1
+        request_kwargs: Dict[str, Any] = {'params': params}
+        if json_body is not None:
+            request_kwargs['json'] = json_body
 
         while True:
             try:
-                response = await self.client.request(method, url, params=params)
+                response = await self.client.request(method, url, **request_kwargs)
             except RETRYABLE_TRANSPORT_ERRORS as e:
                 if attempt >= max_attempts:
                     raise Exception(
@@ -204,9 +214,9 @@ class ScopusClient:
                 response.raise_for_status()
                 data = response.json()
 
-                # Save to cache if GET
-                if use_cache and method.upper() == 'GET':
-                    self.cache.set(url, data, params, ttl=ttl)
+                # Save to cache (idempotent requests only)
+                if use_cache and idempotent:
+                    self.cache.set(url, data, cache_params, ttl=ttl)
 
                 return data
 
@@ -462,6 +472,16 @@ class ScopusClient:
 
         pairs = await asyncio.gather(*(count(y) for y in range(from_year, to_year + 1)))
         return dict(pairs)
+
+    async def search_sciencedirect(self, body: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        ScienceDirect Search API v2 (PUT content/search/sciencedirect, JSON
+        body; see fulltext_search.build_request). Searches full article text
+        of Elsevier content; needs subscriber entitlement. Pages hold at most
+        100 results.
+        """
+        return await self._request('PUT', 'content/search/sciencedirect',
+                                   json_body=body, ttl=self.cache_config['search'])
 
     async def search_authors(self, query: str, count: int = 10) -> Dict[str, Any]:
         """

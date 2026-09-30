@@ -5,6 +5,25 @@ are pushed yet (see "Release process" in ROADMAP.md).
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-09-30
+
+### Added
+- `coding_agreement`: Cohen's kappa with a 95% interval and Landis & Koch
+  reading, per-label agreement, confusion matrix and disagreeing edges for
+  a coding sheet two coders have filled in; also scores the draft labels
+  against each coder and their consensus (the heuristic's validity). Reads
+  CSV with comma, semicolon or tab, as Excel saves it.
+- `check_retractions`: retractions, withdrawals, expressions of concern and
+  corrections from Crossref (Retraction Watch data) for DOIs, Scopus IDs
+  or a corpus file. `citation_network` runs it by default and marks
+  retracted papers on the main path. None among the 113 organizing-vision
+  papers.
+- `citation_network` `edge_contexts`: citation contexts and a draft
+  transmission label for every edge (heaviest first, up to
+  `max_context_edges`), with a two-coder sheet. The 40 heaviest edges of
+  the organizing-vision network: 3 substantive, 8 construct-shifted, 15
+  hollow, 14 unresolved.
+
 ## [0.23.0] - 2026-09-30
 
 ### Added

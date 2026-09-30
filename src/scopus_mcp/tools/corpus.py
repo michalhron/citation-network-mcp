@@ -5,6 +5,7 @@ Every per-paper step is isolated: one malformed record or failed request is
 reported against that paper and never aborts the batch.
 """
 import asyncio
+from collections import Counter
 import json
 import logging
 import math
@@ -24,6 +25,7 @@ from ..baskets import (
 from ..completeness import RULE_TEXT, assess, external_reference_counts
 from ..graphs import _make_node_label
 from ..importers import apply_corpus_file
+from ..retractions import check_dois, status_of
 from ..lineage import WEIGHTS, compute_main_path, key_route_paths, main_path_robustness, write_pajek
 from ..openalex import bare_doi, clean_openalex_work, normalize_title, openalex_work_key, short_id
 from ..output import _output_dir, _query_slug
@@ -161,6 +163,31 @@ TOOLS = [
                         "How key edges are extended: 'local' follows the heaviest adjoining "
                         "edge; 'global' takes the heaviest whole path to and from the key edge."
                     ),
+                },
+                "check_retractions": {
+                    "type": "boolean",
+                    "default": True,
+                    "description": "Flag retracted, withdrawn or concern-flagged papers (Crossref / Retraction Watch; default true).",
+                },
+                "edge_contexts": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": (
+                        "Also gather citation contexts for every edge (Semantic Scholar; one request "
+                        "per citing paper, cached), give each a draft transmission label, and write "
+                        "a coding sheet for two coders. Slow without a Semantic Scholar key; runs as a "
+                        "job past the sync budget."
+                    ),
+                },
+                "construct_terms": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "With edge_contexts: the construct for the draft labels, e.g. ['organizing vision'].",
+                },
+                "max_context_edges": {
+                    "type": "integer",
+                    "default": 300,
+                    "description": "With edge_contexts: most edges to examine, heaviest SPC first (default 300).",
                 },
                 "robustness": {
                     "type": "boolean",
@@ -528,6 +555,41 @@ async def collect_corpus(srv, arguments):
     return out
 
 
+async def _edge_contexts(nodes, edges, path_edges, terms, limit, sheet_path):
+    """Contexts and draft labels for the heaviest `limit` edges; writes a
+    coding sheet with two blank coder columns. Returns (path, {(citing,
+    cited): label})."""
+    import csv
+    from .transmission import draft_label
+    chosen = sorted(edges, key=lambda e: -e['spc'])[:limit]
+    jobs.progress(f"citation_network: contexts for {len(chosen)} edges")
+    results = await gather_contexts([{'citing': e['citing'], 'cited': e['cited']} for e in chosen],
+                                    terms, 3, fulltext=False)
+    by_pair = {(r['citing'], r['cited']): r for r in results}
+    rows, labels = [], {}
+    for i, e in enumerate(chosen, start=1):
+        r = by_pair.get((e['citing'], e['cited'])) or {'context': {'status': 'error'}}
+        c = r['context']
+        d = draft_label(c, terms, r.get('cited_ident'))
+        labels[(e['citing'], e['cited'])] = d['label']
+        rows.append({
+            'edge': i, 'citing_id': e['citing'], 'citing_label': _label(nodes, e['citing']),
+            'cited_id': e['cited'], 'cited_label': _label(nodes, e['cited']), 'spc': e['spc'],
+            'on_main_path': (e['cited'], e['citing']) in path_edges,
+            'context_source': c.get('context_source'), 's2_status': c.get('s2_status') or c.get('status'),
+            's2_intents': ', '.join(c.get('intents') or []), 'influential': bool(c.get('is_influential')),
+            'n_contexts': len(c.get('contexts') or []), 'construct_mentions': d['construct_mentions'],
+            'list_citations': d['list_citations'], 'draft_label': d['label'], 'evidence': d['evidence'],
+            'contexts': ' || '.join(c.get('contexts') or []),
+            'coder_1_label': '', 'coder_2_label': '', 'coder_notes': ''})
+    if rows:
+        with sheet_path.open('w', newline='', encoding='utf-8-sig') as f:
+            writer = csv.DictWriter(f, fieldnames=list(rows[0]))
+            writer.writeheader()
+            writer.writerows(rows)
+    return (str(sheet_path) if rows else None), labels
+
+
 def _node_line(key, n, nodes, errors):
     retrieved, reported = n.get('refs_retrieved'), n.get('refs_reported')
     refs = 'refs ?' if retrieved is None else f"refs {retrieved}"
@@ -574,6 +636,16 @@ async def _citation_network(arguments: dict) -> list:
             if n['completeness'] == 'short':
                 short.append(key)
 
+    retractions = None
+    if arguments.get("check_retractions", True):
+        jobs.progress("citation_network: retraction check")
+        retractions = await check_dois(n['doi'] for n in nodes.values() if n.get('doi'))
+        for n in nodes.values():
+            notices = retractions.get(n.get('doi') or '')
+            if notices:
+                n['retraction'] = status_of(notices)
+                n['retraction_notices'] = notices
+
     jobs.progress("citation_network: main path")
     records = [dict(n, scopus_id=n['id'] if source == 'scopus' else None,
                     openalex_id=n['id'] if source == 'openalex' else None)
@@ -590,6 +662,13 @@ async def _citation_network(arguments: dict) -> list:
 
     base = _base_name(f"network-{query or f'{len(nodes)}-ids'}")
     out = _output_dir()
+    edge_sheet = None
+    edge_labels = {}
+    if arguments.get("edge_contexts"):
+        edge_sheet, edge_labels = await _edge_contexts(
+            nodes, edges, set(zip(mp['global_main_path'], mp['global_main_path'][1:])),
+            arguments.get("construct_terms") or [], int(arguments.get("max_context_edges") or 300),
+            out / f'{base}-edge-coding.csv')
     corpus = {
         'source': source,
         'query': query,
@@ -667,6 +746,21 @@ async def _citation_network(arguments: dict) -> list:
             states = [nodes[x].get('completeness') for x in path if x in nodes]
             lines.append(f"Main path: {len(path)} papers, {states.count('ok')} ok, "
                          f"{states.count('short')} short, {states.count('unknown')} unknown.")
+    if retractions is not None:
+        from .transmission import retraction_lines
+        by_doi = {n['doi']: k for k, n in nodes.items() if n.get('doi')}
+        path_set = set(mp.get('global_main_path') or [])
+        lines.extend(retraction_lines(retractions, lambda d: _label(nodes, by_doi.get(d, d))
+                                      + (' [ON THE MAIN PATH]' if by_doi.get(d) in path_set else '')))
+    if edge_sheet:
+        dist = Counter(v for v in edge_labels.values())
+        on_path = Counter(v for (c, d), v in edge_labels.items()
+                          if (d, c) in set(zip(mp['global_main_path'], mp['global_main_path'][1:])))
+        lines.append(f"Edge contexts for {len(edge_labels)} edges (draft labels, a heuristic for coders): "
+                     + ', '.join(f"{dist.get(k, 0)} {k}" for k in ('substantive', 'construct-shifted', 'hollow', 'unresolved'))
+                     + "; on the main path: " + ', '.join(
+                         f"{on_path.get(k, 0)} {k}" for k in ('substantive', 'construct-shifted', 'hollow', 'unresolved'))
+                     + f". Coding sheet: {edge_sheet}")
     if duplicates:
         lines.append(f"Possible duplicate records ({len(duplicates)}): " + '; '.join(
             ' = '.join(f"{x} {_label(nodes, x)}" for x in group) for group in duplicates[:10]))

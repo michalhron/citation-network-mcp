@@ -8,5 +8,5 @@ working.
 
 # The single source of the version: pyproject.toml reads it (hatch dynamic
 # version), and the server and every User-Agent header import it.
-__version__ = "0.23.0"
+__version__ = "0.24.0"
 USER_AGENT = f"ScopusPlusMCP/{__version__}"

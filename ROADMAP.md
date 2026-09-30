@@ -131,10 +131,9 @@ run from a cloud session.
 - [x] Citation cycles broken against publication order (earliest known
       date) instead of silently dropping papers from the main path.
 - [ ] OpenCitations as a third reference count / edge cross-check.
-- [ ] Retraction flags (Crossref's Retraction Watch data).
+- [x] Retraction flags (Crossref's Retraction Watch data; 0.24.0 `check_retractions`, on by default in citation_network).
 - [ ] Zotero: push a corpus into a collection (needs the user's Zotero key).
-- [ ] Contexts for every edge of a `citation_network` (one S2 request per
-      cited paper; worth it once a free S2 key is configured).
+- [x] Contexts for every edge of a `citation_network` (0.24.0 `edge_contexts`, draft labels and a coding sheet; about 3 s per edge without a Semantic Scholar key).
 - [ ] Emit ISSN clauses in the litbaskets skill (skill-side, not in this repo).
 
 ## Field-test fixes (0.17.1, 2026-09-30)
@@ -148,7 +147,7 @@ run from a cloud session.
       `index_coverage`; coding-sheet export.
 - [ ] Contexts from AIS eLibrary full text (403 to automated downloads;
       needs a sanctioned route, e.g. user-supplied PDFs).
-- [ ] Kappa helper for the filled coding sheet.
+- [x] Kappa helper for the filled coding sheet (0.24.0 `coding_agreement`; also scores the draft labels against the coders).
 
 ## From established bibliometrics tools (planned 2026-09-30)
 

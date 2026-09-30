@@ -7,6 +7,7 @@ import httpx
 from typing import Optional, Dict, Any
 from urllib.parse import urljoin
 
+from . import USER_AGENT
 from .config import (
     get_api_key,
     get_cache_config,
@@ -101,7 +102,7 @@ class ScopusClient:
         self.headers = {
             'X-ELS-APIKey': self.api_key,
             'Accept': 'application/json',
-            'User-Agent': 'ScopusMCP/0.8.1',
+            'User-Agent': USER_AGENT,
         }
         if insttoken:
             self.headers['X-ELS-Insttoken'] = insttoken

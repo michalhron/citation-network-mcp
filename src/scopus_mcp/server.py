@@ -9,6 +9,7 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 import mcp.types as types
 
+from . import __version__
 from .bibtex import fetch_bibtex, generated_entry, make_keys_unique
 from .client import FULLTEXT_MIN_CHARS, ScopusClient
 from .journals import (
@@ -54,7 +55,7 @@ from .utils import (
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("scopus-mcp")
 
-SERVER_VERSION = "0.8.1"
+SERVER_VERSION = __version__
 
 # Initialize Server
 server = Server("scopus-mcp")

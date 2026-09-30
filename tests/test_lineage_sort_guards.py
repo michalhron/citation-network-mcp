@@ -422,16 +422,17 @@ class TestServerVersion(unittest.TestCase):
         self.assertIn('status: ok', text)
 
     def test_server_version_constant_matches_pyproject(self):
-        """SERVER_VERSION must stay in sync with pyproject.toml."""
+        """One version source: pyproject.toml reads it from the package, and
+        the server and installed metadata report the same value."""
+        import importlib.metadata
         import pathlib
-        root = pathlib.Path(__file__).parent.parent / 'pyproject.toml'
-        toml_text = root.read_text()
-        version_line = next(
-            l for l in toml_text.splitlines() if l.startswith('version')
-        )
-        toml_version = version_line.split('=')[1].strip().strip('"')
-        self.assertEqual(SERVER_VERSION, toml_version,
-            f"SERVER_VERSION={SERVER_VERSION!r} != pyproject.toml version={toml_version!r}")
+        import scopus_mcp
+        toml_text = (pathlib.Path(__file__).parent.parent / 'pyproject.toml').read_text()
+        self.assertIn('dynamic = ["version"]', toml_text)
+        self.assertIn('path = "src/scopus_mcp/__init__.py"', toml_text)
+        self.assertEqual(SERVER_VERSION, scopus_mcp.__version__)
+        self.assertEqual(importlib.metadata.version('scopus-mcp'), scopus_mcp.__version__)
+        self.assertEqual(scopus_mcp.USER_AGENT, f'ScopusMCP/{scopus_mcp.__version__}')
 
 
 if __name__ == '__main__':

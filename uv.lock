@@ -1709,7 +1709,6 @@ wheels = [
 
 [[package]]
 name = "scopus-mcp"
-version = "0.8.1"
 source = { editable = "." }
 dependencies = [
     { name = "httpx", extra = ["socks"] },
@@ -1745,7 +1744,7 @@ requires-dist = [
     { name = "pytest-mock", marker = "extra == 'dev'", specifier = ">=3.11.1" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
 ]
-provides-extras = ["keyring", "dev"]
+provides-extras = ["dev", "keyring"]
 
 [[package]]
 name = "secretstorage"

@@ -20,6 +20,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
 
+from . import USER_AGENT
 from .cache import CacheManager
 from .config import resolve_openalex_key
 
@@ -134,7 +135,7 @@ class OpenAlexClient:
     def __init__(self, cache: Optional[CacheManager] = None):
         key, self.key_source = resolve_openalex_key()
         self.has_key = bool(key)
-        headers = {'User-Agent': 'ScopusMCP/0.8.1', 'Accept': 'application/json'}
+        headers = {'User-Agent': USER_AGENT, 'Accept': 'application/json'}
         if key:
             # A header, not the api_key query parameter, keeps the key out of
             # URLs, logs and cache keys.

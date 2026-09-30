@@ -15,6 +15,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
 
+from . import USER_AGENT
+
 logger = logging.getLogger(__name__)
 
 DOI_RESOLVER = "https://doi.org/"
@@ -94,7 +96,7 @@ async def fetch_bibtex(dois: List[str]) -> Dict[str, Tuple[Optional[str], Option
     semaphore = asyncio.Semaphore(CONCURRENCY)
     headers = {
         'Accept': 'application/x-bibtex; charset=utf-8',
-        'User-Agent': 'ScopusMCP/0.8.1',
+        'User-Agent': USER_AGENT,
     }
 
     async with httpx.AsyncClient(timeout=20.0, follow_redirects=True, headers=headers) as http:

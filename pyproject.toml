@@ -1,6 +1,6 @@
 [project]
 name = "scopus-mcp"
-version = "0.8.1"
+dynamic = ["version"]
 description = "A Model Context Protocol server for the Elsevier Scopus API"
 readme = "README.md"
 authors = [
@@ -51,6 +51,9 @@ addopts = "-m 'not integration'"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/scopus_mcp/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/scopus_mcp"]

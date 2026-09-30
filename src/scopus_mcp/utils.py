@@ -12,6 +12,8 @@ from typing import Dict, List, Any, Optional, Set
 
 import httpx
 
+from . import USER_AGENT
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -115,7 +117,7 @@ async def fetch_oa_fulltext(doi: str) -> Dict[str, Any]:
     Never raises; failures are logged and surfaced as text=None.
     """
     POLITE_HEADERS = {
-        'User-Agent': 'ScopusMCP/0.8.1 (mailto:hron@hey.com)',
+        'User-Agent': f'{USER_AGENT} (mailto:hron@hey.com)',
         'Accept': '*/*',
     }
 
@@ -1108,7 +1110,7 @@ def _strip_jats_tags(text: str) -> str:
 async def _fetch_abstract_openalex(doi: str) -> Optional[str]:
     """Fetch abstract from OpenAlex by DOI. Returns None on failure."""
     try:
-        async with httpx.AsyncClient(timeout=15, headers={'User-Agent': 'ScopusMCP/0.8.1 (mailto:research@example.com)'}) as client:
+        async with httpx.AsyncClient(timeout=15, headers={'User-Agent': f'{USER_AGENT} (mailto:research@example.com)'}) as client:
             r = await client.get(f'https://api.openalex.org/works/doi:{doi}')
         if r.status_code != 200:
             return None
@@ -1124,7 +1126,7 @@ async def _fetch_abstract_openalex(doi: str) -> Optional[str]:
 async def _fetch_abstract_crossref(doi: str) -> Optional[str]:
     """Fetch abstract from Crossref by DOI. Returns None on failure."""
     try:
-        async with httpx.AsyncClient(timeout=15, headers={'User-Agent': 'ScopusMCP/0.8.1 (mailto:research@example.com)'}) as client:
+        async with httpx.AsyncClient(timeout=15, headers={'User-Agent': f'{USER_AGENT} (mailto:research@example.com)'}) as client:
             r = await client.get(f'https://api.crossref.org/works/{doi}')
         if r.status_code != 200:
             return None

@@ -72,9 +72,9 @@ no Scopus subscription.
 
 `get_bibtex`: publisher metadata for papers with DOIs; marked, generated entries for the rest.
 
-> Get the full text of this Elsevier paper.
+> Get the full text of this paper.
 
-`get_fulltext`: ScienceDirect when your subscription allows it, otherwise an open-access copy, otherwise the abstract, always stating which.
+`get_fulltext`: ScienceDirect when your subscription allows it; otherwise an open copy from OpenAlex's locations, Semantic Scholar, arXiv, Europe PMC, and Unpaywall or CORE when configured, published versions first; otherwise the abstract. It states the source and the version (preprint, accepted manuscript, published), and checks the paper's title opens the text, because open-access links are sometimes attached to the wrong document.
 
 ## When something fails
 

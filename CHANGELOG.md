@@ -5,6 +5,31 @@ are pushed yet (see "Release process" in ROADMAP.md).
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-09-30
+
+### Added
+- `get_fulltext` searches more open sources: every open location in
+  OpenAlex (not only its best one), Semantic Scholar's open PDF and arXiv
+  ID, arXiv by exact title, Europe PMC full-text XML, and Unpaywall
+  (needs `CONTACT_EMAIL`) and CORE (needs `CORE_API_KEY`) when configured.
+  Published versions are tried first, then accepted manuscripts, then
+  preprints; the result names the source, the version and every attempt.
+  ResearchGate and similar sites without an API are not used: their terms
+  forbid automated downloading.
+- Open-access text must open with the paper's title. Live, the repository
+  copy linked to He et al. (2016) was a PhD thesis citing it; it is now
+  rejected and the arXiv preprint used.
+- Settings `CONTACT_EMAIL`, `CORE_API_KEY`, `SEMANTIC_SCHOLAR_API_KEY`.
+
+### Changed
+- Open-access text must be at least 5,000 characters, the bar the
+  ScienceDirect tier already used; shorter pages are landing pages.
+
+### Fixed
+- The package sent a hard-coded contact email (the maintainer's) with every
+  OpenAlex request, and a placeholder one elsewhere. No email is sent now
+  unless `CONTACT_EMAIL` is set.
+
 ### Changed
 - `utils.py` (1,389 lines) split into `records.py`, `graphs.py`,
   `lineage.py`, `output.py` and `oa_fulltext.py`; `utils.py` re-exports

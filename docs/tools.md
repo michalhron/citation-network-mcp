@@ -79,7 +79,7 @@ Retrieve an author's profile by Author ID.
 
 ### `get_fulltext`
 
-Retrieve the full text of a paper via a provider waterfall: (1) ScienceDirect full text (requires SCOPUS_INSTTOKEN or institutional IP), (2) open-access copy via OpenAlex + direct fetch, (3) Scopus abstract fallback. Returns provenance, character count, file path, and a ~1500-char sample. Full body is written to disk — never returned inline. ToS note: retrieval is for the user's own non-commercial text-and-data-mining; content written to local disk must not be redistributed.
+Retrieve the full text of a paper via a provider waterfall: (1) ScienceDirect full text (requires SCOPUS_INSTTOKEN or institutional IP), (2) open-access copy: every open location in OpenAlex, Semantic Scholar's open PDF and arXiv ID, arXiv by exact title, Europe PMC, and Unpaywall or CORE when configured; published versions first, and the result names the source and version (preprint, accepted manuscript, published), (3) Scopus abstract fallback. Returns provenance, character count, file path, and a ~1500-char sample. Full body is written to disk — never returned inline. ToS note: retrieval is for the user's own non-commercial text-and-data-mining; content written to local disk must not be redistributed.
 
 | Parameter | Type | Default | Description |
 | --- | --- | --- | --- |

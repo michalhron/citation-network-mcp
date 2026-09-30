@@ -23,6 +23,7 @@ Corrections are welcome as issues.
 | Topic landscape: fields and journal quartiles for a query | ✓ | — | — | — | — | — |
 | BibTeX export | ✓ | — | ✓ | — | — | — |
 | Full text (ScienceDirect, open access) | ✓ | — | ✓ | ✓ | — | — |
+| Open-access copies from arXiv, Semantic Scholar, Europe PMC, Unpaywall, CORE | ✓ | — | — | — | — | — |
 | Full-text search (ScienceDirect) | ✓ | — | ✓ | — | — | — |
 | Author profile by ID | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Author search by name | ✓ | — | ✓ | ✓ | ✓ | — |

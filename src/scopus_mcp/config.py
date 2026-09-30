@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -156,6 +157,37 @@ def resolve_openalex_key() -> Tuple[Optional[str], Optional[str]]:
     account key raises it tenfold.
     """
     return _resolve(('OPENALEX_API_KEY',), 'openalex_api_key')
+
+
+def get_contact_email() -> Optional[str]:
+    """
+    Optional contact email sent to open scholarly APIs, which ask for one
+    (OpenAlex's polite pool, arXiv and Semantic Scholar etiquette) or
+    require it (Unpaywall). Environment variable 'CONTACT_EMAIL', else
+    config.json 'contact_email'. None when unset or not an address: no email
+    is ever sent on a user's behalf by default.
+    """
+    email = (os.getenv('CONTACT_EMAIL') or load_config_file().get('contact_email') or '').strip()
+    return email if re.fullmatch(r'[^@\s]+@[^@\s]+\.[^@\s]+', email) else None
+
+
+def contact_user_agent(base: str) -> str:
+    """User-Agent with a mailto: when a contact email is configured."""
+    email = get_contact_email()
+    return f"{base} (mailto:{email})" if email else base
+
+
+def resolve_core_key() -> Tuple[Optional[str], Optional[str]]:
+    """Optional CORE API key (core.ac.uk, free): 'CORE_API_KEY', the OS secret
+    store account 'core_api_key', or config.json 'core_api_key'."""
+    return _resolve(('CORE_API_KEY',), 'core_api_key')
+
+
+def resolve_semantic_scholar_key() -> Tuple[Optional[str], Optional[str]]:
+    """Optional Semantic Scholar API key, which raises its rate limit:
+    'SEMANTIC_SCHOLAR_API_KEY', the OS secret store account
+    'semantic_scholar_api_key', or config.json 'semantic_scholar_api_key'."""
+    return _resolve(('SEMANTIC_SCHOLAR_API_KEY',), 'semantic_scholar_api_key')
 
 
 PROXY_SCHEMES = ('http', 'https', 'socks5', 'socks5h')

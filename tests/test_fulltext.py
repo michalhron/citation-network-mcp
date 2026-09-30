@@ -56,15 +56,16 @@ ABSTRACT_RESPONSE = {
     }
 }
 
-OA_OPENALEX_PDF = {
-    'open_access': {'is_oa': True, 'oa_url': 'https://example.com/paper.pdf'},
-    'best_oa_location': {'pdf_url': 'https://example.com/paper.pdf', 'url': 'https://example.com/paper.pdf'},
-}
+OA_OPENALEX_PDF = {'locations': [
+    {'is_oa': False, 'version': 'publishedVersion', 'landing_page_url': 'https://doi.org/10.1234/test'},
+    {'is_oa': True, 'version': 'acceptedVersion', 'pdf_url': 'https://example.com/paper.pdf',
+     'source': {'display_name': 'Example Repository'}},
+]}
 
-OA_OPENALEX_HTML = {
-    'open_access': {'is_oa': True, 'oa_url': 'https://example.com/paper.html'},
-    'best_oa_location': {'pdf_url': None, 'url': 'https://example.com/paper.html'},
-}
+OA_OPENALEX_HTML = {'locations': [
+    {'is_oa': True, 'version': 'publishedVersion', 'pdf_url': None,
+     'landing_page_url': 'https://example.com/paper.html', 'source': {'display_name': 'Example Journal'}},
+]}
 
 # ---------------------------------------------------------------------------
 # Fake httpx async client helper
@@ -157,7 +158,7 @@ def test_sd_none_falls_through_to_abstract(tmp_path):
 
 def test_oa_pdf_path(tmp_path):
     """OA path: PDF fetch → pymupdf extraction → provenance oa-fulltext, written to disk."""
-    pdf_text = 'C' * 4000
+    pdf_text = 'C' * 6000
 
     def fake_get(url, **kwargs):
         if 'openalex' in url:
@@ -177,14 +178,16 @@ def test_oa_pdf_path(tmp_path):
         data = _json_result(result)
 
         assert data['provenance'] == 'oa-fulltext'
-        assert data['char_count'] == 4000
+        assert data['char_count'] == 6000
         assert 'file_path' in data
         assert data['source_url'] == 'https://example.com/paper.pdf'
+        assert data['oa_source'] == 'OpenAlex: Example Repository'
+        assert data['oa_version'] == 'accepted manuscript'
 
 
 def test_oa_html_path(tmp_path):
     """OA path: HTML fetch → HTML extraction → provenance oa-fulltext."""
-    extracted = 'D' * 4000
+    extracted = 'D' * 6000
 
     def fake_get(url, **kwargs):
         if 'openalex' in url:
@@ -205,8 +208,9 @@ def test_oa_html_path(tmp_path):
         data = _json_result(result)
 
         assert data['provenance'] == 'oa-fulltext'
-        assert data['char_count'] == 4000
+        assert data['char_count'] == 6000
         assert data['source_url'] == 'https://example.com/paper.html'
+        assert data['oa_version'] == 'published'
 
 
 def test_oa_fetch_failure_falls_through_to_abstract(tmp_path):

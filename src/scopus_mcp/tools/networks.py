@@ -3,7 +3,10 @@ import logging
 import mcp.types as types
 
 from ..openalex import clean_openalex_work, short_id
-from ..utils import _make_node_label, _query_slug, clean_abstract_details, clean_references, clean_search_results, compute_main_path, compute_pairwise_edges, render_lineage_html, render_lineage_png, to_eid, to_scopus_id, write_graph_to_disk, write_lineage_to_disk
+from ..graphs import _make_node_label, compute_pairwise_edges, write_graph_to_disk
+from ..lineage import compute_main_path, render_lineage_html, render_lineage_png, write_lineage_to_disk
+from ..output import _query_slug
+from ..records import clean_abstract_details, clean_references, clean_search_results, to_eid, to_scopus_id
 from .common import SOURCE_SCHEMA, _resolve_openalex_work, _source, server_module
 
 logger = logging.getLogger("citation-network-mcp")

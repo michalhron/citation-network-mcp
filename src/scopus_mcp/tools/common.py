@@ -2,7 +2,8 @@
 from datetime import datetime as _today_datetime
 
 from ..openalex import openalex_work_key
-from ..utils import _output_dir, clean_abstract_details, to_scopus_id
+from ..output import _output_dir
+from ..records import clean_abstract_details, to_scopus_id
 
 
 def server_module():

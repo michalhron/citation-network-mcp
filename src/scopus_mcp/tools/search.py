@@ -9,7 +9,8 @@ from ..authors import clean_openalex_author, clean_scopus_author, scopus_author_
 from ..client import FULLTEXT_MIN_CHARS
 from ..fulltext_search import PAGE_SIZE as SD_PAGE_SIZE, analyze_mentions, build_request, clean_result as clean_sd_result
 from ..openalex import clean_openalex_work
-from ..utils import _fetch_abstract_crossref, _fetch_abstract_openalex, clean_abstract_details, clean_author_profile, clean_identifiers, clean_search_results, detect_id_type, should_write_to_disk, write_fulltext_to_disk, write_results_to_disk
+from ..output import should_write_to_disk, write_fulltext_to_disk, write_results_to_disk
+from ..records import _fetch_abstract_crossref, _fetch_abstract_openalex, clean_abstract_details, clean_author_profile, clean_identifiers, clean_search_results, detect_id_type
 from .common import SOURCE_SCHEMA, _source, server_module
 
 logger = logging.getLogger("citation-network-mcp")

@@ -2,7 +2,7 @@
 import mcp.types as types
 
 from ..openalex import clean_openalex_work, short_id
-from ..utils import clean_references, clean_search_results
+from ..records import clean_references, clean_search_results
 from .common import SOURCE_SCHEMA, _resolve_openalex_work, _source, server_module
 
 

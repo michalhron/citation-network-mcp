@@ -257,7 +257,7 @@ class TestRenderGraphPng(unittest.TestCase):
         edges = []
         with tempfile.TemporaryDirectory() as td:
             with patch.dict(os.environ, {'SCOPUS_MCP_OUTPUT_DIR': td}), \
-                 patch('scopus_mcp.utils.render_graph_png',
+                 patch('scopus_mcp.graphs.render_graph_png',
                        side_effect=RuntimeError('simulated render failure')):
                 paths = write_graph_to_disk(nodes, edges, 'fail-render-test')
                 graphml_exists = Path(paths['graphml_path']).exists()
@@ -297,7 +297,7 @@ class TestCouplingMetadataAndPng(unittest.IsolatedAsyncioTestCase):
 
     async def test_render_failure_does_not_crash_tool(self):
         """A render error must not prevent the tool from returning a valid result."""
-        with patch('scopus_mcp.utils.render_graph_png',
+        with patch('scopus_mcp.graphs.render_graph_png',
                    side_effect=RuntimeError('render broken')):
             with tempfile.TemporaryDirectory() as td:
                 result = await self._dispatch({'seed_ids': ['111', '222'], 'min_shared': 2}, td)

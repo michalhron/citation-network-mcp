@@ -12,7 +12,7 @@ from . import __version__
 from .bibtex import fetch_bibtex  # noqa: F401
 from .client import ScopusClient
 from .openalex import OpenAlexClient
-from .utils import fetch_oa_fulltext  # noqa: F401
+from .oa_fulltext import fetch_oa_fulltext  # noqa: F401
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

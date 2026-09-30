@@ -18,8 +18,12 @@ store. Tests marked `integration` call the live APIs and run only with
   shared helpers in `common.py`. Each module exports `TOOLS` and `HANDLERS`.
   Handlers read the clients from the server module at call time, which is
   also where tests replace them.
-- API clients and parsing: `client.py` (Elsevier), `openalex.py`,
-  `fulltext_search.py`, `journals.py`, `authors.py`, `bibtex.py`, `utils.py`.
+- API clients: `client.py` (Elsevier), `openalex.py`.
+- Parsing and analysis: `records.py` (Scopus responses, IDs, abstract
+  fallbacks), `graphs.py` (coupling and co-citation networks), `lineage.py`
+  (lineage corpus, main path, HTML and PNG), `output.py` (result files),
+  `oa_fulltext.py`, `fulltext_search.py`, `journals.py`, `authors.py`,
+  `bibtex.py`. `utils.py` only re-exports these for older imports.
 
 To add a tool, add its schema to `TOOLS` and a handler to `HANDLERS` in the
 right group module, then regenerate `docs/tools.md` and the manifests.

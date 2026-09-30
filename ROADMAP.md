@@ -79,8 +79,8 @@ Every new tool gets a live smoke test before it is trusted (see Lessons).
 - [x] `publish.yml` publishes to PyPI (trusted publishing) and the MCP
       registry on version tags, under the new name.
 - [x] Split `server.py` into `scopus_mcp/tools/` modules by group (0.14.0).
-- [ ] Split `utils.py` (1,389 lines: parsing, networks, rendering, file
-      output) the same way.
+- [x] Split `utils.py` into `records`, `graphs`, `lineage`, `output` and
+      `oa_fulltext` modules; `utils.py` re-exports for older imports.
 - [x] README around the differentiator (done 2026-09-30, ahead of Phase 2).
 - [x] Dropped README_CN and the Chinese prompt guide; English examples in
       `docs/examples.md`.

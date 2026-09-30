@@ -5,6 +5,21 @@ are pushed yet (see "Release process" in ROADMAP.md).
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-09-30
+
+### Changed
+- Renamed to **scopus-plus-mcp** (repository `michalhron/scopus-plus-mcp`;
+  both earlier URLs redirect). Network analysis is now one feature among
+  many; the name says what the project is: a Scopus MCP server that goes
+  further. The PyPI package `citation-network-mcp` stays at 0.15.0 and is
+  no longer updated; install `scopus-plus-mcp` instead. The
+  `citation-network-mcp` and `scopus-mcp` commands remain as aliases.
+- Claude Desktop extension and Claude Code plugin renamed to match
+  (`scopus-plus-mcp@michalhron`); reinstall them under the new name.
+- MCP registry entry: `io.github.michalhron/scopus-plus-mcp`.
+- README states that Scopus and ScienceDirect are Elsevier trademarks and
+  that the project is not affiliated with Elsevier.
+
 ## [0.15.0] - 2026-09-30
 
 ### Added

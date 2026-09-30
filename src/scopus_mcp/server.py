@@ -16,7 +16,7 @@ from .oa_fulltext import fetch_oa_fulltext  # noqa: F401
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("citation-network-mcp")
+logger = logging.getLogger("scopus-plus-mcp")
 
 SERVER_VERSION = __version__
 
@@ -31,10 +31,10 @@ SERVER_INSTRUCTIONS = (
 )
 
 server = Server(
-    "citation-network-mcp",
+    "scopus-plus-mcp",
     version=__version__,
     instructions=SERVER_INSTRUCTIONS,
-    website_url="https://github.com/michalhron/citation-network-mcp",
+    website_url="https://github.com/michalhron/scopus-plus-mcp",
 )
 client = ScopusClient()
 # OpenAlex backend: the same analyses without Scopus subscriber entitlement.

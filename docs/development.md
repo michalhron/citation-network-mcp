@@ -57,7 +57,7 @@ in the README or `docs/` points nowhere.
 ## Extension and plugin
 
 `manifest.json` (Claude Desktop extension) and
-`plugins/citation-network-mcp/.claude-plugin/plugin.json` (Claude Code plugin)
+`plugins/scopus-plus-mcp/.claude-plugin/plugin.json` (Claude Code plugin)
 take their version and tool list from the code, and `server.json` (MCP
 registry) its version:
 
@@ -65,7 +65,7 @@ registry) its version:
 uv run python scripts/build_extension.py
 ```
 
-This also validates and packs `dist/citation-network-mcp-<version>.mcpb`
+This also validates and packs `dist/scopus-plus-mcp-<version>.mcpb`
 (needs Node.js for `npx`). `tests/test_extension.py` fails when any of these
 is stale, and CI builds the bundle on every push.
 
@@ -77,7 +77,7 @@ is stale, and CI builds the bundle on every push.
    entries under the new version.
 3. Merge to `main`, then push the tag `vX.Y.Z`. Two workflows run:
    `release.yml` publishes a GitHub Release with the `.mcpb`, and
-   `publish.yml` uploads `citation-network-mcp` to PyPI and then lists it in
+   `publish.yml` uploads `scopus-plus-mcp` to PyPI and then lists it in
    the MCP registry. Both check that the tag matches the version.
 
 Publishing uses GitHub OIDC, with no stored tokens: PyPI through a trusted

@@ -1,9 +1,9 @@
 {
   "mcpServers": {
-    "citation-network": {
+    "scopus-plus": {
       "command": "uvx",
       "args": [
-        "citation-network-mcp"
+        "scopus-plus-mcp"
       ]
     }
   }

@@ -104,6 +104,13 @@ Every new tool gets a live smoke test before it is trusted (see Lessons).
       and Systems Engineering went from 18% Q1 (all ranked venues) to 64% Q1
       (journals only, 37 papers in proceedings and book series).
 
+## Rename to scopus-plus-mcp (0.16.0, 2026-09-30)
+
+- [x] Repository, package, extension, plugin and registry entry renamed;
+      `citation-network-mcp` and `scopus-mcp` commands kept as aliases.
+- [ ] PyPI pending publisher for `scopus-plus-mcp` (Michal), then tag v0.16.0.
+- [ ] Switch Claude Desktop to `uvx scopus-plus-mcp@latest` after release.
+
 ## Phase 3 — Research pipeline
 
 Orchestrator skill (Session D below) and the lineage-model ideas. Mostly

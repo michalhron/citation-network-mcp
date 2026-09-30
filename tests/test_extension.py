@@ -65,7 +65,7 @@ def test_server_reports_package_version_and_instructions():
 
 
 def test_claude_code_plugin_matches_code():
-    plugin = json.loads((ROOT / 'plugins' / 'citation-network-mcp' / '.claude-plugin' / 'plugin.json')
+    plugin = json.loads((ROOT / 'plugins' / 'scopus-plus-mcp' / '.claude-plugin' / 'plugin.json')
                         .read_text(encoding='utf-8'))
     assert plugin['version'] == scopus_mcp.__version__, (
         "plugin.json is stale; run: uv run python scripts/build_extension.py")
@@ -73,8 +73,8 @@ def test_claude_code_plugin_matches_code():
     entry = marketplace['plugins'][0]
     assert entry['name'] == plugin['name']  # install id and manifest name must match
     assert (ROOT / entry['source']).is_dir()
-    servers = json.loads((ROOT / 'plugins' / 'citation-network-mcp' / '.mcp.json').read_text())['mcpServers']
-    assert servers['citation-network']['args'][-1] == 'citation-network-mcp'
+    servers = json.loads((ROOT / 'plugins' / 'scopus-plus-mcp' / '.mcp.json').read_text())['mcpServers']
+    assert servers['scopus-plus']['args'][-1] == 'scopus-plus-mcp'
 
 
 def test_registry_entry_matches_package():

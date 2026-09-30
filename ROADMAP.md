@@ -83,8 +83,8 @@ Every new tool gets a live smoke test before it is trusted (see Lessons).
 - [ ] Fix `publish.yml` first: it publishes to PyPI on any `v*` tag, under
       upstream's name. Until then, never push version tags.
 - [ ] Split `server.py` and `utils.py` (1,200+ lines each) into tool modules.
-- [ ] README around the differentiator (citation-network analysis, works
-      without a Scopus subscription via OpenAlex); update or drop README_CN.
+- [x] README around the differentiator (done 2026-09-30, ahead of Phase 2).
+- [ ] Update or drop README_CN (still the older upstream text).
 - [ ] Publish: PyPI, MCP registry (`server.json`), Claude Desktop bundle.
 
 ## Phase 3 — Research pipeline

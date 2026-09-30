@@ -20,6 +20,8 @@ are pushed yet (see "Release process" in ROADMAP.md).
   raises OpenAlex's daily budget from $0.10 to $1; errors report the
   remaining budget.
 - Results CSV gains `openalex_id` and `source` columns.
+- README rewritten for this project as an independent fork, with upstream
+  credited under "Origins and credits".
 
 ### Fixed
 - `get_references` returned at most 40 references (the REF view's page

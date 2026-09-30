@@ -204,11 +204,12 @@ async def handle_list_tools() -> list[types.Tool]:
         types.Tool(
             name="search_all",
             description=(
-                "Search Scopus and automatically page through results, returning up to "
-                "max_results entries in a single call. Uses STANDARD view (200 results/page). "
-                "For max_results > 5,000 the tool switches to cursor-based deep paging. "
-                "Large max_results values consume significant API quota and may require "
-                "many requests — use conservatively."
+                "Search Scopus (or OpenAlex with source='openalex') and page through "
+                "results automatically, returning up to max_results entries in one call. "
+                "Scopus pages hold SCOPUS_PAGE_SIZE records (default 25) and switch to "
+                "cursor paging beyond 5,000; OpenAlex pages hold 200. Results over 50 "
+                "records are written to disk as JSON and CSV. Large max_results values "
+                "consume significant quota — use conservatively."
             ),
             inputSchema={
                 "type": "object",

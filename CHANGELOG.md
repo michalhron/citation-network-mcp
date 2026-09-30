@@ -5,6 +5,23 @@ are pushed yet (see "Release process" in ROADMAP.md).
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-09-30
+
+### Added
+- `thematic_evolution`: themes of a corpus per period and how they change
+  (Cobo et al. 2011; bibliometrix's thematic map and evolution). Keyword
+  co-occurrence normalised by the equivalence index and clustered with
+  Louvain; each theme placed by Callon centrality and density (motor,
+  basic, niche, emerging or declining); themes of consecutive periods
+  linked by the inclusion index (continues, splits, merges, new,
+  vanishes). `construct_terms` follows a construct: its theme, that
+  theme's quadrant and the keywords it co-occurs with, per period. Terms:
+  author keywords (index terms where a paper has none), all keywords, or
+  two- and three-word phrases from title and abstract (copyright lines and
+  academic boilerplate removed; "IT" kept as an acronym). Periods by cut
+  years or by size. JSON, CSV and a PNG of the strategic diagrams, with the
+  construct's themes starred.
+
 ## [0.20.0] - 2026-09-30
 
 ### Added

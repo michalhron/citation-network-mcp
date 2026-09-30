@@ -20,7 +20,7 @@ import mcp.types as types
 # Tools that may outlive a bridge timeout.
 LONG_TOOLS = {'citation_network', 'resolve_citers', 'citation_lineage',
               'bibliographic_coupling', 'co_citation', 'path_transmission',
-              'index_coverage', 'rpys', 'historiograph'}
+              'index_coverage', 'rpys', 'historiograph', 'thematic_evolution'}
 
 
 def sync_budget() -> float:

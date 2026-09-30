@@ -1,56 +1,154 @@
-# Scopus MCP — Roadmap & Cross-Source Design
+# Scopus MCP — Roadmap
 
-Living plan for the `michalhron/scopus-mcp` fork and how it feeds the
-`mechanism-inheritance-audit` skill. Drop this in the repo root so it
-survives independent of any chat history.
+Single living plan for the `michalhron/scopus-mcp` fork. Replaces the
+2026-06-24 roadmap and the 2026-06-25 addendum; their research-design content
+is kept verbatim under "Research design" below.
 
-_Last updated: 2026-06-24, end of build session._
+_Last updated: 2026-09-30._
 
-## Current state (verified live unless noted)
+## Status
 
-Branch: `feat/network-builders` @ `e8b634b`, version `0.5.1`, pushed to origin.
+- 0.8.1 merged into `main` (PR #2). Phase 1 so far in PR #3
+  (`feat/roadmap-phase1`); later Phase 1 work on `feat/phase1-part2`.
+  Claude Desktop is pinned to that branch's tip. See CHANGELOG.md.
+- 14 tools. Scopus: search, `search_all`, abstracts, author profiles,
+  identifiers, references, citing papers, full text. Networks:
+  `bibliographic_coupling`, `co_citation`, `citation_lineage` with SPC main path.
+  Ops: `diagnose_connection`, quota, server info.
+- Offline suite of about 270 tests; CI on Ubuntu, macOS and Windows.
+- Upstream (qwe4559999/scopus-mcp) inactive since 2026-05-17; PRs #11–#14
+  unanswered. This fork is maintained independently.
 
-Built and live-verified:
+## Deadline that shapes everything: institutional access ends ~end Nov 2026
 
-- **`resolve_identifier`** — Scopus ID / EID / DOI / PII → cross-reference set.
-  DOI is the join key for all cross-source work.
-- **`get_references`** — backward citations via Abstract Retrieval REF view.
-  Parser fixed in 0.5.1 (see "Lessons" below); 40/40 refs extract cleanly.
-- **`get_citing_papers`** — forward citations, `REF(2-s2.0-<id>)` (the original
-  `REFEID(<id>)` 400'd).
-- **`search_all`** — transparent multi-page fetch. Verified: 5,001 records,
-  start-paging <=5,000 then `cursor=*` beyond, deduped by identifier.
-- **File-output contract** — `write_results_to_disk` / `should_write_to_disk`
-  in `utils.py`; sets >50 records write JSON+CSV to `SCOPUS_MCP_OUTPUT_DIR`
-  (else `~/scopus-mcp-output`) and return a compact summary + paths + sample.
-- **`bibliographic_coupling`** — backward: shared references -> research front.
-  `compute_pairwise_edges` (Salton cosine + raw count), `write_graph_to_disk`
-  (GraphML + CSV). Built; NOT yet run live on a real seed set (see "Next").
-- **`co_citation`** — forward: shared citing papers -> intellectual base.
-  Same helpers. Built; NOT yet run live.
-- Centralized EID normalization, empty-set fix (returns `[]`, no phantom),
-  informative API error surfacing.
+Michal leaves the institution around the end of November 2026. Every route to
+Scopus subscriber entitlement goes with the affiliation: campus IP, VPN or
+SSH proxy (`SCOPUS_PROXY`), and an insttoken. **Decision (2026-09-30): no
+insttoken request through the library.** The June request to
+apisupport@elsevier.com is abandoned.
 
-## NEXT SESSION — start here
+After departure, search, citing papers, references, coupling, co-citation and
+lineage stop working on Scopus. Only ID-based metadata keeps working, and only
+if the API key itself survives the affiliation. Two consequences:
 
-1. **Repin** Claude Desktop `scopus-assistant` to `@e8b634b` (new config block,
-   just swap the SHA), full Cmd+Q restart.
-2. **Run the first real networks** on the organizing-vision seed set:
-   - `bibliographic_coupling(seed_ids=SEEDS, min_shared=2)`
-   - `co_citation(seed_ids=SEEDS, min_shared=2)`
-   - Same seeds, two directions — compare how they cluster.
-3. **Open the GraphML in VOSviewer** — the one check no unit test can do
-   (proves the XML is well-formed for picky parsers, not just `xml.etree`).
-4. If clusters look right, **Session A is done** -> move to Session D.
+1. Harvest the research corpora while entitled (Phase 1, item 2).
+2. OpenAlex becomes the long-term backend (Phase 1, item 3). It also removes
+   the subscription barrier that keeps this server's audience small.
 
-Organizing-vision seed set (14 papers, 2020–2026, pulled live this session):
-```
-85186605555  105014870625  85151965536  85097715634  85216793920
-85195678374  85192371054   105026555771 85098247765   105029501243
-85208706582  105029252067  105011354071 105033695390
-```
+## Phase 0 — Close out
 
-## Lessons (the recurring tax)
+- [x] Off-network entitlement: OS secret store, proxy, diagnostics (0.8.1).
+- [x] Cross-OS CI.
+- [x] CHANGELOG.md; this consolidated roadmap.
+- [x] Merge PR #2 into `main` (2026-09-30). Claude may not merge PRs;
+      Michal merges.
+- [ ] Optional: comment on upstream PRs asking about co-maintainership.
+
+## Phase 1 — Features, ordered by the access deadline
+
+Every new tool gets a live smoke test before it is trusted (see Lessons).
+
+1. [x] **Per-API access check.** `diagnose_connection` probes REF view,
+       ScienceDirect full text and Serial Title, and lists unavailable tools.
+       Live on campus 2026-09-30: all three entitled (REF returned 109 refs;
+       subscription full text 53,017 chars). So the June REF refusal was not a
+       permanent key limit; most likely it happened off the campus network.
+2. [ ] **Harvest before end of November.** Run the lineage, reference and
+       full-text pulls that "What Inherits?" and "Hype Without a Cycle" need,
+       to disk via the file-output contract. Data work, not code. More urgent
+       than planned: OpenAlex cannot replace Scopus for AIS conference papers
+       (see item 3), and coupling networks built before the 2026-09-30
+       reference-paging fix used at most 40 references per seed, so re-run
+       them.
+3. [x] **OpenAlex backend.** `source="openalex"` on search, citing papers,
+       references, coupling and co-citation; results carry OpenAlex IDs and
+       sources are never mixed. Live 2026-09-30 on four organizing-vision
+       seeds: Scopus coupling 4/4 seeds, 6 edges; OpenAlex 1/4. Two AIS
+       eLibrary papers are in OpenAlex with no reference lists (and
+       misattributed to JAIS), one ICIS paper has no exact title match.
+       Journal articles work, but thinner (Swanson 2025: 132 references in
+       OpenAlex vs 171 in Scopus). `citation_lineage` too: live forward
+       walk of Swanson & Ramiller 1997 (2 gens, 20 per node, min 50 cites):
+       Scopus 378 papers, OpenAlex 348, different main paths.
+4. [x] **Yearly publication counts.** `publication_counts`, both sources.
+       Live 2015–2026 for "organizing vision": Scopus 61, OpenAlex 77, with
+       different year profiles, so compare trends within one source only.
+5. [x] **Journal metrics.** `get_journal_metrics`. Two live traps: Serial
+       Title ignores Scopus source IDs (returns the first 25 journals
+       alphabetically, HTTP 200), and knows JIT only as 2251-919X/1466-4437,
+       not the 0268-3962 its search records carry. Source IDs are mapped via
+       SRCID search and matched by source ID. Basket of Eight live: 7/8 by
+       print ISSN, JIT via source ID. The litbaskets skill can pass SRCIDs.
+6. [x] **BibTeX export.** `get_bibtex`; publisher metadata via DOI content
+       negotiation (errors included: Crossref spells Doreian "Dereian" for
+       Hummon & Doreian 1989), generated entries for DOI-less AIS papers.
+- Dropped: Scopus author search. Needs subscriber entitlement that ends in
+  November; OpenAlex author data replaces it.
+
+## Phase 2 — Public release (only if outside users are wanted)
+
+- [ ] Choose a package name; `scopus-mcp` on PyPI belongs to upstream. Update
+      authors, URLs and `mcp-name`; keep MIT and credit upstream.
+- [ ] Fix `publish.yml` first: it publishes to PyPI on any `v*` tag, under
+      upstream's name. Until then, never push version tags.
+- [ ] Split `server.py` and `utils.py` (1,200+ lines each) into tool modules.
+- [x] README around the differentiator (done 2026-09-30, ahead of Phase 2).
+- [ ] Update or drop README_CN (still the older upstream text).
+- [ ] Publish: PyPI, MCP registry (`server.json`), Claude Desktop bundle.
+
+## Phase 3 — Research pipeline
+
+Orchestrator skill (Session D below) and the lineage-model ideas. Mostly
+skill-side, so independent of distribution. Plan it on the harvested corpora
+and OpenAlex, since Scopus REF view and full text end with the affiliation.
+
+## Release process
+
+Bump `pyproject.toml`, `SERVER_VERSION` and the User-Agent strings together,
+add a CHANGELOG entry, merge to `main`, repin Claude Desktop to the merge
+commit. No tags until Phase 2 fixes `publish.yml`.
+
+---
+
+# Research design
+
+Carried over verbatim from the 2026-06-24 roadmap and 2026-06-25 addendum.
+Statements about access below predate the 2026-09-30 decision above.
+
+### Known boundaries (facts, not bugs)
+
+- REF-VIEW ENTITLEMENT WALL. The current API key (individual entitlement) is
+  refused on Abstract Retrieval view=REF: X-ELS-Status=AUTHORIZATION_ERROR with
+  X-RateLimit-Remaining=9983 (NOT quota exhaustion; key works for all non-REF
+  endpoints). This blocks get_references, bibliographic_coupling, and BACKWARD
+  citation_lineage. Forward lineage (via search_all citing queries) is unaffected
+  and is the usable capability now.
+  UNRESOLVED CONTRADICTION: get_references worked earlier on 2026-06-24 (Swanson
+  85216793920 returned 40 refs; coupling processed 13/14 seeds), then refused
+  later the same session. Either intermittent, or a per-document/rate dimension.
+  RETEST one clean get_references on 85216793920 when the API is fresh: 40 refs
+  (transient blip) vs AUTHORIZATION_ERROR (truly token-gated).
+
+- INSTTOKEN IS THE SINGLE UNLOCK. The institutional token (requested from Elsevier
+  2026-06-24, apisupport@elsevier.com, from UGent address, with the API key)
+  unlocks BOTH REF view AND ScienceDirect full text — they are coupled. When it
+  arrives: add "SCOPUS_INSTTOKEN":"..." to the config env block, repin, no code
+  change. As of 2026-06-25 AM: no reply yet. Everything in section 2 is gated on
+  this.
+
+- FULL TEXT ALREADY PARTLY WORKS. get_fulltext returned sciencedirect-fulltext
+  (154,448 chars) on 10.1016/j.infoandorg.2026.100608 WITHOUT the insttoken —
+  Elsevier entitlements are granular/per-endpoint, so the full-text path shows
+  life even before the token. Provenance flagging (sciencedirect-fulltext /
+  oa-fulltext / scopus-abstract / none) is the methodological backbone: the audit
+  must never present an abstract-grade verdict as full-text-grade.
+
+- RECENCY FLOOR. Ahead-of-print 2026 papers are not yet Scopus-indexed and cannot
+  be seeds (e.g. Leavell ISR 10.1287/isre.2024.1339, published online 2026-06-12,
+  returned "no record"). OpenAlex/Crossref index faster — folding them in would
+  raise the recency floor (future triangulation work).
+
+### Lessons (the recurring tax)
 
 Three times now, Claude Code's mocked tests passed while the live Scopus
 contract failed: (1) cursor paging cap, (2) the 1 MB tool-return limit,
@@ -63,13 +161,7 @@ The REF parser bug specifically: real REF view uses FLAT keys
 `ref-info`/`refd-itemidlist` structure originally assumed. The 0.5.1 test now
 asserts a parsed ref has `scopus_id` or `doi`, so this can't regress silently.
 
-## Housekeeping (not urgent)
-
-Branch stack has grown: `feat/search-all` -> `fix/result-return-contract` ->
-`feat/network-builders`, chained. Open PRs and merge down to `main` before
-this sprawls; then pin Desktop to `main` rather than a feature branch.
-
-## Cross-source principle: Scopus = structure, Springer = content
+### Cross-source principle: Scopus = structure, Springer = content
 
 `resolve_identifier` -> DOI -> SpringerLink (`get_article`,
 `get_open_access_fulltext`). Scopus knows the citation graph; Springer knows
@@ -84,7 +176,7 @@ LNCS/LNBIP conference world (e.g. the PoEM paper, the DPP papers in Electronic
 Markets). Full-text-dependent ideas work best on the design-science / Euro-IS /
 conference slice and degrade gracefully elsewhere.
 
-### Ideas on top of the foundation
+#### Ideas on top of the foundation
 
 - **Annotated network maps.** Name coupling/co-citation clusters by their shared
   Springer abstract content, not raw keywords.
@@ -96,7 +188,7 @@ conference slice and degrade gracefully elsewhere.
   papers -> full text (Springer) for just those -> summarize. Read 8 pivotal
   papers, not 200 abstracts.
 
-## How this feeds `mechanism-inheritance-audit` (the convergence point)
+### How this feeds `mechanism-inheritance-audit` (the convergence point)
 
 Today the audit runs on the handful of papers Michal has personally read. The
 pipeline makes it corpus-scale and empirical:
@@ -114,15 +206,109 @@ Scopus supplies the lineage skeleton; Springer supplies the flesh. The
 difference between an anecdote and a corpus-scale finding for **"What Inherits?
 A Forcing Audit for the IS Cumulative Tradition"** (CAIS Debate, Sept 2026).
 
-## Build order (do not reorder)
+### The reframe: this is an AUDIT layer on an established method, not a new method
 
-Session 0 (file contract) DONE -> A (network builders) BUILT, needs live run ->
-D (orchestrator skill) -> B / C anytime. Each later tool reuses the file-output
-helper; design it once.
+The structural machinery built so far — forward lineage walking, SPC main-path
+scoring, the layered DAG, the D3/PNG renderers — is NOT the contribution. It is a
+reimplementation of an established, decades-old, citable method: main-path
+analysis (Hummon & Doreian 1989; Batagelj 2003), already implemented in Pajek and
+already applied within IS (Liang et al. 2016, IT outsourcing, Information &
+Management). The map this produces is a solved problem.
 
----
+The contribution is the layer ON TOP: a substrate/predicate audit that reads the
+full text at each transmission edge and judges whether the mechanism actually
+survived, was reinterpreted, or broke. Every main-path method in the literature
+assumes citation == knowledge transmission. None reads the text to test that
+assumption. That untested assumption is the blind spot; the audit fills it.
 
-## SESSION D — orchestrator skill prompt (ready to paste into Claude Code)
+Paper structure that follows from this:
+- Section 3 (baseline / method built upon): the SPC main-path machinery. Cite
+  Hummon-Doreian, Batagelj, Pajek, Liang et al. This is DONE in code.
+- Section 4 (contribution): the substrate/predicate audit. Survives / reinterprets
+  / breaks, read from full text. This is SPEC'd, not built (gated on insttoken).
+
+Key rhetorical move: reproduce a Liang-style main-path trajectory on the seed,
+then show — by reading each edge — that some transmissions are real inheritance
+and others ceremonial, and that this changes the trajectory. The before/after
+figure (raw map vs. verdict-coloured map) is the key figure.
+
+Target paper: "What Inherits? A Forcing Audit for the IS Cumulative Tradition"
+(CAIS Debate, Sept 2026).
+
+### Four lineage-model design ideas (all gated on REF + full text)
+
+These emerged in sequence and compose into one model. The tree rendered on
+2026-06-24 is the single-parent SIMPLIFICATION of this target model.
+
+(a) TRANSMISSION-BASED PARENTAGE. Do not parent every citer to the seed. Parent
+    each paper to the most recent lineage member it ALSO cites — that is where it
+    actually inherited the construct; the seed citation is often ceremonial.
+    Requires each node's reference list (REF view).
+
+(b) CITATION INTENSITY AS EDGE WEIGHT. Count in-text mentions of each cited
+    lineage member in the body. One parenthetical mention in the intro = likely
+    performative; repeated engagement across sections = real inheritance. A
+    structural (countable) signal that needs full text but not judgment. Fiddly:
+    must handle author-year and numeric citation forms, disambiguate same-author
+    papers. NOTE: nearest prior work is Liu et al. 2014 ("citations with
+    different levels of relevancy") — read it to carve the delta.
+
+(c) MULTIPLE PARENTS (the DAG, not the tree). Retrospectives / "25 years on"
+    papers engage the whole history including the root — they don't branch at the
+    end, they wire to many ancestors at once. A paper is a child of EVERY lineage
+    member it substantively engages, weighted by intensity. Generation becomes a
+    property of the EDGE (this edge spans N generations), not of the paper. Node
+    parentage shape then classifies paper type for free: many-generation parents
+    = synthesiser/retrospective; one strong recent parent = thread-continuer;
+    weak seed-only edge = performative citer.
+
+(d) PERFORMATIVE-CITATION FLAGGING. A late, low-intensity, seed-only citation is
+    ceremonial, not inheritance. Time-lag (citer year − seed year), especially
+    relative to the construct's canonisation point, is a cheap STRUCTURAL PRIOR
+    for which edges to suspect. Lag tells you where to look; the text tells you
+    what's there. Prior, never verdict. NOTE: nearest prior work is Liu & Kuan
+    2016 ("decay in knowledge diffusion") — read it to carve the delta.
+
+Discipline held throughout: SERVER = structure/data (deterministic, no LLM).
+SKILL = judgment (the survives/reinterprets/breaks classifier). Structure prunes
+(main-path / lag / parentage / intensity); the classifier judges only the spine.
+
+### Related work to map (the foil literature)
+
+The contribution is positioned AGAINST this literature, which is the foundation
+and the foil — not competition. Read the two starred ones FIRST; they are nearest
+the contribution and define the delta.
+
+Foundational / method:
+- Hummon & Doreian (1989), Social Networks 11(1):39-63 — 10.1016/0378-8733(89)90017-8 — the origin (SPC method rebuilt on 06-24).
+- Batagelj (2003), arXiv cs/0309023 — the SPC algorithm specifically.
+- Liu & Lu (2012), JASIST 63(3):528-542 — 10.1002/asi.21692 — key-route search (multiple main paths; relevant to DAG-not-tree).
+- Liu, Lu & Ho (2019), Scientometrics 119(1):379-391 — 10.1007/s11192-019-03034-x — "a few notes on main path analysis"; where the method is contested.
+
+NEAREST PRIOR WORK — READ FIRST:
+- * Liu, Chen, Ho & Li (2014), JASIST 65(12):2479-2488 — 10.1002/asi.23135 — "citations with different levels of relevancy." Nearest to the CITATION-INTENSITY idea. Confirm: they weight structurally/by metadata; the audit weights by READING.
+- * Liu & Kuan (2016), JASIST 67(2):465-476 — 10.1002/asi.23384 — "decay in knowledge diffusion." Nearest to the PERFORMATIVE-CITATION idea. Confirm: their decay is structural; the audit's is text-confirmed.
+
+IS precedent (proves the method is accepted in-field; also the visual foil):
+- Liang, Wang, Xue & Cui (2016), Information & Management 53(2):227-251 — 10.1016/j.im.2015.10.001 — main-path analysis of IT outsourcing. Figure 5 ("multiple main paths of the ITO citation network") is the canonical example of what the structural method produces — and what it cannot show (whether any edge is real inheritance). Use as the motivating foil figure.
+
+Also useful:
+- Lucio-Arias & Leydesdorff (2008), JASIST 59(12):1948-1962 — 10.1002/asi.20903 — HistCite historiograms.
+- Yeo et al. (2014), Scientometrics 98(1):633-655 — 10.1007/s11192-013-1140-3 — aggregative/stochastic main paths.
+
+Resource: Da Vincier Lab "list of main path articles" — davincierlab.weebly.com/list-of-main-path-articles.html — maintained bibliography; literature-review starting set.
+
+STILL TO SEARCH (not yet mapped): citation-context classification / "citation
+function" NLP literature — the subfield that classifies WHY a paper cites another.
+Nearest to the intensity/engagement idea on the NLP side; map before claiming
+novelty there. (Not searched as of 06-25.)
+
+Tooling note: Pajek is the canonical main-path tool but is a GUI desktop app — not
+a library, no API to attach edge verdicts. Cite it as the established tool; do NOT
+try to integrate it. Use it once at most to validate that compute_main_path
+reproduces the canonical SPC numbers.
+
+### SESSION D — orchestrator skill prompt (ready to paste into Claude Code)
 
 > Note: build the lineage-walker tool (multi-generation forward traversal) as
 > part of this, OR as a small Session A.5 first — the orchestrator needs it.

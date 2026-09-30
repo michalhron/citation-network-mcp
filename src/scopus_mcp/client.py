@@ -49,9 +49,38 @@ RETRYABLE_TRANSPORT_ERRORS = (
     httpx.RemoteProtocolError,
 )
 
+# Concurrent per-year requests in yearly_counts.
+YEARLY_CONCURRENCY = 4
+# ISSNs per Serial Title request (the API pages at 25 entries).
+SERIAL_BATCH = 25
+
+# The REF view returns at most this many references per response.
+REF_PAGE = 40
+# Upper bound on REF pages per document (2,000 references).
+REF_MAX_PAGES = 50
+REF_RANGE_ERROR = "'startref' or 'refcount' parameter missing or invalid"
+
 # Stable, existing record used by diagnose_connection as a metadata canary.
 CANARY_SCOPUS_ID = "85007305299"
 CANARY_QUERY = "ALL(gene)"
+# Capability canaries. The full-text canary must be a subscription (non-OA)
+# ScienceDirect article, so full text proves entitlement rather than open
+# access: Hummon & Doreian (1989), Social Networks, ~53k chars when entitled.
+CANARY_FULLTEXT_DOI = "10.1016/0378-8733(89)90017-8"
+CANARY_ISSN = "0276-7783"  # MIS Quarterly
+# Unentitled article requests can return 200 with abstract-length text only.
+FULLTEXT_MIN_CHARS = 5000
+
+# Which tools each capability gates, so diagnostics can say what will fail.
+CAPABILITY_TOOLS = {
+    'search': ['search_scopus', 'search_all', 'get_citing_papers',
+               'co_citation', 'citation_lineage (forward)',
+               'publication_counts (Scopus)'],
+    'references': ['get_references', 'bibliographic_coupling',
+                   'citation_lineage (backward)'],
+    'fulltext': ['get_fulltext (ScienceDirect step; falls back to OA/abstract)'],
+    'serial_title': ['get_journal_metrics (Scopus)'],
+}
 
 class ScopusClient:
     """
@@ -358,15 +387,118 @@ class ScopusClient:
 
         Note: the REF view requires an entitled (subscriber) key; an
         unentitled key returns 403, surfaced as an error by _request.
-        Deeper paging of long reference lists uses the 'startref' parameter.
+
+        The REF view returns REF_PAGE references per response, whatever the
+        list length, so this pages with 'startref'/'refcount' until
+        '@total-references' is reached and merges every page into the first
+        response. Without it, long reference lists were silently cut at 40.
         """
-        params = {'view': 'REF'}
-        return await self._request(
-            'GET',
-            f"content/abstract/scopus_id/{to_scopus_id(scopus_id)}",
-            params,
-            ttl=self.cache_config['abstract'],
+        endpoint = f"content/abstract/scopus_id/{to_scopus_id(scopus_id)}"
+        ttl = self.cache_config['abstract']
+        data = await self._request('GET', endpoint, {'view': 'REF'}, ttl=ttl)
+        refs_block = ((data.get('abstracts-retrieval-response') or {})
+                      .get('references'))
+        if not isinstance(refs_block, dict):
+            return data
+        refs = refs_block.get('reference') or []
+        if isinstance(refs, dict):
+            refs = [refs]
+        try:
+            total = int(refs_block.get('@total-references') or 0)
+        except (TypeError, ValueError):
+            total = 0
+        pages = 1
+        shrunk = False
+        while len(refs) < total and pages < REF_MAX_PAGES:
+            # refcount past the end of the list is a 400, so the last page
+            # asks for the remainder only.
+            try:
+                page = await self._request(
+                    'GET', endpoint,
+                    {'view': 'REF', 'startref': len(refs) + 1,
+                     'refcount': min(REF_PAGE, total - len(refs))},
+                    ttl=ttl,
+                )
+            except Exception as exc:
+                # Scopus can report one more reference than it serves
+                # (@total-references 172, last retrievable 171), so a page
+                # reaching the phantom entry 400s. Retry once, one shorter.
+                if shrunk or REF_RANGE_ERROR not in str(exc):
+                    raise
+                shrunk = True
+                total -= 1
+                continue
+            more = (((page.get('abstracts-retrieval-response') or {})
+                     .get('references') or {}).get('reference') or [])
+            if isinstance(more, dict):
+                more = [more]
+            if not more:
+                break
+            refs.extend(more)
+            pages += 1
+        refs_block['reference'] = refs
+        return data
+
+    async def yearly_counts(self, query: str, from_year: int, to_year: int) -> Dict[int, int]:
+        """
+        Scopus hits per publication year for a query: one count=1 search per
+        year, reading only opensearch:totalResults. Requests only the
+        identifier field to keep responses small; runs YEARLY_CONCURRENCY at
+        a time. Costs one search request per year.
+        """
+        semaphore = asyncio.Semaphore(YEARLY_CONCURRENCY)
+
+        async def count(year: int):
+            async with semaphore:
+                data = await self._request(
+                    'GET', 'content/search/scopus',
+                    {'query': f'({query}) AND PUBYEAR = {year}', 'count': 1,
+                     'field': 'dc:identifier'},
+                    ttl=self.cache_config['search'],
+                )
+            total = (data.get('search-results') or {}).get('opensearch:totalResults')
+            return year, int(total or 0)
+
+        pairs = await asyncio.gather(*(count(y) for y in range(from_year, to_year + 1)))
+        return dict(pairs)
+
+    async def serial_titles(self, issns: list) -> list:
+        """
+        Serial Title entries for compact ISSNs, SERIAL_BATCH per request.
+        ISSNs Serial Title does not know are simply absent from the result
+        (a batch of only unknown ISSNs is a 404, returned by _request as {}).
+        Never pass Scopus source IDs here: the API ignores them and returns
+        an unrelated alphabetical list.
+        """
+        entries = []
+        for i in range(0, len(issns), SERIAL_BATCH):
+            data = await self._request(
+                'GET', 'content/serial/title',
+                {'issn': ','.join(issns[i:i + SERIAL_BATCH])},
+                ttl=self.cache_config['default'],
+            )
+            batch = (data.get('serial-metadata-response') or {}).get('entry') or []
+            entries.extend(e for e in batch if isinstance(e, dict))
+        return entries
+
+    async def source_id_issns(self, source_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Print and electronic ISSN of a Scopus source ID, read from one
+        count=1 search (SRCID(...)); None when the source has no records.
+        Needs search entitlement.
+        """
+        data = await self._request(
+            'GET', 'content/search/scopus',
+            {'query': f'SRCID({source_id})', 'count': 1,
+             'field': 'prism:issn,prism:eIssn,prism:publicationName,source-id'},
+            ttl=self.cache_config['default'],
         )
+        entries = (data.get('search-results') or {}).get('entry') or []
+        entry = entries[0] if entries else {}
+        if not entry or entry.get('error'):
+            return None
+        return {'issn': entry.get('prism:issn'), 'eissn': entry.get('prism:eIssn'),
+                'name': entry.get('prism:publicationName')}
 
     async def search_all(self, query: str, max_results: int = 200, sort: str = 'coverDate') -> Dict[str, Any]:
         """
@@ -619,9 +751,89 @@ class ScopusClient:
             search['detail'] = msg[:300]
         report['search'] = search
 
+        # 5. Per-API capabilities beyond search. Elsevier entitles endpoints
+        # separately, so a working search says nothing about REF view or full
+        # text. Probed concurrently to keep the diagnosis quick.
+        references, fulltext, serial_title = await asyncio.gather(
+            self._probe_references(), self._probe_fulltext(), self._probe_serial_title()
+        )
+        report['capabilities'] = {
+            'references': references,
+            'fulltext': fulltext,
+            'serial_title': serial_title,
+        }
+        report['unavailable_tools'] = self._unavailable_tools(report)
+
         report['entitlement_via'] = self._entitlement_route(report)
         report['verdict'] = self._build_verdict(report)
         return report
+
+    @staticmethod
+    def _classify_probe_error(msg: str) -> str:
+        if any(m in msg for m in ('401', '403', 'Authentication failed',
+                                  'REF-view fetch failed', 'AUTHORIZATION')):
+            return 'entitlement_missing'
+        if 'Network error' in msg or 'Timeout' in msg or 'timed out' in msg:
+            return 'network'
+        return 'error'
+
+    async def _probe_references(self) -> Dict[str, Any]:
+        """REF view on the canary record: are reference lists entitled?"""
+        result: Dict[str, Any] = {'status': 'ok'}
+        try:
+            data = await self._request(
+                'GET', f'content/abstract/scopus_id/{CANARY_SCOPUS_ID}',
+                {'view': 'REF', 'count': 1}, use_cache=False,
+            )
+            refs = (data.get('abstracts-retrieval-response') or {}).get('references') or {}
+            if not refs:
+                result['status'] = 'empty'
+        except Exception as exc:
+            result['status'] = self._classify_probe_error(str(exc))
+            result['detail'] = str(exc)[:300]
+        return result
+
+    async def _probe_fulltext(self) -> Dict[str, Any]:
+        """Subscription article: full body, abstract only, or refused?"""
+        result: Dict[str, Any] = {'status': 'ok', 'canary_doi': CANARY_FULLTEXT_DOI}
+        try:
+            data = await self._request(
+                'GET', f'content/article/doi/{CANARY_FULLTEXT_DOI}', use_cache=False,
+            )
+            root = data.get('full-text-retrieval-response') or {}
+            chars = len(str(root.get('originalText') or ''))
+            result['chars'] = chars
+            if chars < FULLTEXT_MIN_CHARS:
+                result['status'] = 'abstract_only'
+        except Exception as exc:
+            result['status'] = self._classify_probe_error(str(exc))
+            result['detail'] = str(exc)[:300]
+        return result
+
+    async def _probe_serial_title(self) -> Dict[str, Any]:
+        """Serial Title API: journal metrics (SJR, SNIP, CiteScore)."""
+        result: Dict[str, Any] = {'status': 'ok', 'canary_issn': CANARY_ISSN}
+        try:
+            data = await self._request(
+                'GET', f'content/serial/title/issn/{CANARY_ISSN}', use_cache=False,
+            )
+            if not (data.get('serial-metadata-response') or {}).get('entry'):
+                result['status'] = 'empty'
+        except Exception as exc:
+            result['status'] = self._classify_probe_error(str(exc))
+            result['detail'] = str(exc)[:300]
+        return result
+
+    @staticmethod
+    def _unavailable_tools(report: Dict[str, Any]) -> list:
+        """Tools gated by a capability that is not 'ok', in a stable order."""
+        statuses = {'search': report['search']['status']}
+        statuses.update({k: v['status'] for k, v in report.get('capabilities', {}).items()})
+        tools = []
+        for capability, status in statuses.items():
+            if status != 'ok':
+                tools.extend(CAPABILITY_TOOLS.get(capability, []))
+        return tools
 
     @staticmethod
     def _entitlement_route(report: Dict[str, Any]) -> Optional[str]:
@@ -642,7 +854,9 @@ class ScopusClient:
 
     @staticmethod
     def _build_verdict(report: Dict[str, Any]) -> str:
-        """Collapses the four checks into a one-line, user-relayable verdict."""
+        """Collapses the checks into a one-line, user-relayable verdict.
+
+        The list of affected tools is in report['unavailable_tools']."""
         metadata = report['metadata']['status']
         search = report['search']['status']
         reachability = report['reachability']
@@ -679,6 +893,13 @@ class ScopusClient:
             )
         elif metadata == 'ok' and search == 'ok':
             verdict = "Connection and entitlement healthy."
+            capabilities = report.get('capabilities', {})
+            limited = [k for k, v in capabilities.items() if v.get('status') != 'ok']
+            if limited:
+                verdict = (
+                    "Search works, but not every API is entitled: "
+                    f"{', '.join(limited)} unavailable."
+                )
         elif not reachability['reachable'] or search == 'network':
             verdict = "api.elsevier.com is not reachable; check your network connection."
         else:

@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 CSV_COLUMNS = [
     'scopus_id', 'title', 'creator', 'publication_name',
     'cover_date', 'doi', 'cited_by_count', 'aggregation_type', 'url',
+    'openalex_id', 'source',
 ]
 
 # Inline-vs-file threshold: result sets larger than this are written to disk.
@@ -437,8 +438,9 @@ def write_lineage_to_disk(
 # ---------------------------------------------------------------------------
 
 def _rec_key(r: Dict[str, Any]) -> Optional[str]:
-    """Stable key for a lineage record: scopus_id if present, else doi:…"""
-    sid = r.get('scopus_id')
+    """Stable key for a lineage record: scopus_id, else openalex_id (OpenAlex
+    walks), else doi:…"""
+    sid = r.get('scopus_id') or r.get('openalex_id')
     if sid:
         return sid
     doi = r.get('doi')

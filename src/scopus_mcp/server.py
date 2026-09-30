@@ -1,4 +1,7 @@
 import asyncio
+import json
+from datetime import date as _today_date
+from datetime import datetime as _today_datetime
 import logging
 from typing import Any, Optional
 
@@ -6,8 +9,23 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 import mcp.types as types
 
-from .client import ScopusClient
+from .bibtex import fetch_bibtex, generated_entry, make_keys_unique
+from .client import FULLTEXT_MIN_CHARS, ScopusClient
+from .journals import (
+    clean_openalex_source,
+    clean_serial_entry,
+    format_issn,
+    normalize_issn,
+    serial_entry_issns,
+)
+from .openalex import (
+    OpenAlexClient,
+    clean_openalex_work,
+    openalex_work_key,
+    short_id,
+)
 from .utils import (
+    _output_dir,
     clean_search_results,
     clean_abstract_details,
     clean_author_profile,
@@ -41,6 +59,28 @@ SERVER_VERSION = "0.8.1"
 # Initialize Server
 server = Server("scopus-mcp")
 client = ScopusClient()
+# OpenAlex backend: the same analyses without Scopus subscriber entitlement.
+openalex = OpenAlexClient()
+
+# Cap on the year span of a Scopus publication_counts call (one request per year).
+MAX_SCOPUS_YEARS = 60
+# Cap on identifiers per get_bibtex call.
+MAX_BIBTEX = 200
+# Cap on journals per get_journal_metrics call.
+MAX_JOURNALS = 200
+
+SOURCE_SCHEMA = {
+    "type": "string",
+    "enum": ["scopus", "openalex"],
+    "default": "scopus",
+    "description": (
+        "Data source. 'scopus' (default) needs subscriber entitlement for "
+        "search, citations and references. 'openalex' needs none: IDs may be "
+        "DOIs, OpenAlex work IDs (W...), or Scopus IDs (resolved to a DOI via "
+        "Scopus metadata), and results carry OpenAlex IDs. Never mix sources "
+        "within one analysis."
+    ),
+}
 
 @server.list_tools()
 async def handle_list_tools() -> list[types.Tool]:
@@ -106,8 +146,12 @@ async def handle_list_tools() -> list[types.Tool]:
                 "properties": {
                     "scopus_id": {
                         "type": "string",
-                        "description": "The Scopus ID of the document to find citations for."
+                        "description": (
+                            "The Scopus ID of the document to find citations for. With "
+                            "source='openalex', a DOI or OpenAlex work ID also works."
+                        )
                     },
+                    "source": SOURCE_SCHEMA,
                     "count": {
                         "type": "integer",
                         "description": "Number of results to return (default 5, max 25).",
@@ -126,10 +170,13 @@ async def handle_list_tools() -> list[types.Tool]:
         types.Tool(
             name="diagnose_connection",
             description=(
-                "Diagnose Scopus connectivity and entitlement. Runs four checks "
-                "(config presence, api.elsevier.com reachability, metadata "
-                "entitlement, search entitlement) and returns a JSON report with "
-                "a one-line verdict. Run this first when Scopus behaves strangely "
+                "Diagnose Scopus connectivity and entitlement. Checks config "
+                "presence, api.elsevier.com reachability, metadata and search "
+                "entitlement, and per-API capabilities (REF-view references, "
+                "ScienceDirect full text, Serial Title journal metrics). Returns "
+                "a JSON report with a one-line verdict and 'unavailable_tools', "
+                "the tools that cannot work with the current access. Run this "
+                "first when Scopus behaves strangely "
                 "— especially when valid searches fail with 'Error translating "
                 "query', which usually means missing subscriber entitlement "
                 "(off-network without SCOPUS_INSTTOKEN), not bad query syntax."
@@ -176,18 +223,23 @@ async def handle_list_tools() -> list[types.Tool]:
         types.Tool(
             name="search_all",
             description=(
-                "Search Scopus and automatically page through results, returning up to "
-                "max_results entries in a single call. Uses STANDARD view (200 results/page). "
-                "For max_results > 5,000 the tool switches to cursor-based deep paging. "
-                "Large max_results values consume significant API quota and may require "
-                "many requests — use conservatively."
+                "Search Scopus (or OpenAlex with source='openalex') and page through "
+                "results automatically, returning up to max_results entries in one call. "
+                "Scopus pages hold SCOPUS_PAGE_SIZE records (default 25) and switch to "
+                "cursor paging beyond 5,000; OpenAlex pages hold 200. Results over 50 "
+                "records are written to disk as JSON and CSV. Large max_results values "
+                "consume significant quota — use conservatively."
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "The Scopus search query (e.g., 'TITLE(AI) AND PUBYEAR > 2020')."
+                        "description": (
+                            "Search query. Scopus: Scopus syntax (e.g., 'TITLE(AI) AND "
+                            "PUBYEAR > 2020'). OpenAlex: plain words matched against title "
+                            "and abstract; quote phrases (e.g., '\"organizing vision\"')."
+                        )
                     },
                     "max_results": {
                         "type": "integer",
@@ -196,9 +248,92 @@ async def handle_list_tools() -> list[types.Tool]:
                     },
                     "sort": {
                         "type": "string",
-                        "description": "Sort order (e.g., 'coverDate', 'relevancy').",
-                        "default": "coverDate"
+                        "description": (
+                            "Sort order (e.g., 'coverDate', 'relevancy', 'citedby'). "
+                            "Defaults to 'coverDate' for Scopus, 'relevance' for OpenAlex."
+                        )
+                    },
+                    "source": SOURCE_SCHEMA
+                },
+                "required": ["query"]
+            }
+        ),
+        types.Tool(
+            name="get_journal_metrics",
+            description=(
+                "Journal metrics for a list of journals, e.g. a litbaskets basket. "
+                "Scopus (default): SJR, SNIP, CiteScore and CiteScore Tracker with "
+                "their years, plus subject areas, from the Serial Title API. Give "
+                "ISSNs, or Scopus source IDs (SRCIDs), which are mapped to ISSNs "
+                "through one Scopus search each (needs search entitlement). "
+                "source='openalex': OpenAlex's own measures (2-year mean citedness, "
+                "h-index, i10-index), ISSNs only, no entitlement. Journals not found "
+                "are listed, never dropped. Also written to CSV. "
+                f"At most {MAX_JOURNALS} journals per call."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "issns": {
+                        "type": "array", "items": {"type": "string"},
+                        "description": "ISSNs, with or without hyphen."
+                    },
+                    "source_ids": {
+                        "type": "array", "items": {"type": "string"},
+                        "description": "Scopus source IDs (SRCID), Scopus only."
+                    },
+                    "source": SOURCE_SCHEMA
+                },
+                "required": []
+            }
+        ),
+        types.Tool(
+            name="get_bibtex",
+            description=(
+                "BibTeX entries for a list of papers, written to a .bib file and "
+                "returned inline. Identifiers may be DOIs, Scopus IDs/EIDs or "
+                "OpenAlex work IDs. Entries come from the publisher's metadata via "
+                "DOI content negotiation (errors included, so check author names). "
+                "Papers without a DOI, such as AIS conference papers, get a minimal "
+                "entry built from Scopus or OpenAlex metadata, marked with a note. "
+                f"At most {MAX_BIBTEX} identifiers per call."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "identifiers": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "DOIs, Scopus IDs/EIDs, or OpenAlex work IDs (W...)."
                     }
+                },
+                "required": ["identifiers"]
+            }
+        ),
+        types.Tool(
+            name="publication_counts",
+            description=(
+                "Count publications per year for a query, e.g. to chart how "
+                "attention to a topic rose and fell. Scopus: your query in Scopus "
+                "syntax, one request per year, so from_year and to_year are required "
+                f"(at most {MAX_SCOPUS_YEARS} years). OpenAlex: plain words matched "
+                "against title and abstract (quote phrases), one request for all "
+                "years. The two sources count differently; compare trends within "
+                "one source, not levels across sources."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": (
+                            "Scopus: Scopus syntax, e.g. 'TITLE-ABS-KEY(\"organizing "
+                            "vision\")'. OpenAlex: e.g. '\"organizing vision\"'."
+                        )
+                    },
+                    "from_year": {"type": "integer", "description": "First year (inclusive)."},
+                    "to_year": {"type": "integer", "description": "Last year (inclusive)."},
+                    "source": SOURCE_SCHEMA
                 },
                 "required": ["query"]
             }
@@ -209,8 +344,9 @@ async def handle_list_tools() -> list[types.Tool]:
                 "Build a bibliographic-coupling graph for a set of seed papers. "
                 "Two seeds are coupled when they share cited references; edge weight = "
                 "count of shared references, cosine = Salton index. "
-                "Maps the current research front. Requires an entitled (subscriber) key "
-                "for REF-view access. Output: GraphML + CSV edge list written to disk."
+                "Maps the current research front. Scopus needs an entitled (subscriber) "
+                "key for REF-view access; source='openalex' does not. "
+                "Output: GraphML + CSV edge list written to disk."
             ),
             inputSchema={
                 "type": "object",
@@ -218,8 +354,12 @@ async def handle_list_tools() -> list[types.Tool]:
                     "seed_ids": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "List of Scopus IDs (bare numeric or SCOPUS_ID: prefixed)."
+                        "description": (
+                            "Seed papers: Scopus IDs (bare numeric or SCOPUS_ID: prefixed). "
+                            "With source='openalex', DOIs and OpenAlex work IDs also work."
+                        )
                     },
+                    "source": SOURCE_SCHEMA,
                     "min_shared": {
                         "type": "integer",
                         "description": "Minimum shared references for an edge to be emitted (default 2).",
@@ -245,8 +385,12 @@ async def handle_list_tools() -> list[types.Tool]:
                     "seed_ids": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "List of Scopus IDs (bare numeric or SCOPUS_ID: prefixed)."
+                        "description": (
+                            "Seed papers: Scopus IDs (bare numeric or SCOPUS_ID: prefixed). "
+                            "With source='openalex', DOIs and OpenAlex work IDs also work."
+                        )
                     },
+                    "source": SOURCE_SCHEMA,
                     "min_shared": {
                         "type": "integer",
                         "description": "Minimum co-citing papers for an edge to be emitted (default 2).",
@@ -266,15 +410,20 @@ async def handle_list_tools() -> list[types.Tool]:
             description=(
                 "Retrieve the cited-reference list of a document (Backward Citations) "
                 "via the Abstract Retrieval REF view. Complements get_citing_papers, "
-                "which returns forward citations. Requires an entitled (subscriber) key."
+                "which returns forward citations. Scopus requires an entitled "
+                "(subscriber) key; source='openalex' does not."
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
                     "scopus_id": {
                         "type": "string",
-                        "description": "The Scopus ID (or EID) of the document whose references to retrieve."
+                        "description": (
+                            "The Scopus ID (or EID) of the document whose references to "
+                            "retrieve. With source='openalex', a DOI or OpenAlex work ID also works."
+                        )
                     },
+                    "source": SOURCE_SCHEMA,
                     "count": {
                         "type": "integer",
                         "description": "Maximum number of references to return (default 25).",
@@ -332,6 +481,9 @@ async def handle_list_tools() -> list[types.Tool]:
                 "for forward) to collect the most-cited citers first, which gives a "
                 "meaningful citation-backbone; sort='coverDate' collects the most recent "
                 "citers first (which can produce a recency-dominated walk). "
+                "source='openalex' walks OpenAlex instead (no Scopus entitlement; "
+                "node IDs are OpenAlex work IDs; reference lists are thinner and "
+                "absent for AIS eLibrary papers). "
                 "Server version is included in every response."
             ),
             inputSchema={
@@ -339,8 +491,12 @@ async def handle_list_tools() -> list[types.Tool]:
                 "properties": {
                     "seed_id": {
                         "type": "string",
-                        "description": "Scopus ID or EID of the seed paper."
+                        "description": (
+                            "Scopus ID or EID of the seed paper. With source='openalex', "
+                            "a DOI or OpenAlex work ID also works."
+                        )
                     },
+                    "source": SOURCE_SCHEMA,
                     "generations": {
                         "type": "integer",
                         "description": "Number of generations to walk (default 1, max 3).",
@@ -367,9 +523,9 @@ async def handle_list_tools() -> list[types.Tool]:
                         "description": (
                             "'forward' (default): walk citing papers via search_all + REF(). "
                             "Fan-out can be large; use max_per_node to bound quota. "
-                            "'backward': walk cited references via get_references. "
-                            "Fan-out is naturally bounded (~40 refs/paper); "
-                            "references with neither scopus_id nor doi are skipped."
+                            "'backward': walk cited references via get_references, "
+                            "up to max_per_node per paper; references with no ID "
+                            "are skipped."
                         ),
                         "enum": ["forward", "backward"],
                         "default": "forward"
@@ -383,7 +539,7 @@ async def handle_list_tools() -> list[types.Tool]:
                             "the high-flow backbone. "
                             "'coverDate': most recent first — captures the current fringe "
                             "but may produce a recency-dominated walk on high-citation seeds. "
-                            "'relevancy': Scopus relevance score."
+                            "'relevancy': Scopus relevance score (Scopus only)."
                         ),
                         "enum": ["citedby", "coverDate", "relevancy"],
                         "default": "citedby"
@@ -393,6 +549,200 @@ async def handle_list_tools() -> list[types.Tool]:
             }
         )
     ]
+
+def _source(arguments: dict) -> str:
+    source = (arguments.get("source") or "scopus").lower()
+    if source not in ("scopus", "openalex"):
+        raise ValueError(f"source must be 'scopus' or 'openalex', not {source!r}")
+    return source
+
+
+async def _resolve_openalex_work(identifier: str) -> dict:
+    """Raw OpenAlex work for a DOI, OpenAlex ID, or Scopus ID/EID.
+
+    Scopus IDs go through Scopus metadata to get a DOI; that lookup needs no
+    subscriber entitlement, so it keeps working off campus. Records without
+    a DOI (common for AIS conference papers) fall back to an exact title
+    match within one year.
+    """
+    identifier = str(identifier).strip()
+    if openalex_work_key(identifier) is None:
+        details = clean_abstract_details(await client.get_abstract(to_scopus_id(identifier)))
+        doi = details.get('doi')
+        if not doi:
+            title = details.get('title')
+            year = (details.get('cover_date') or '')[:4]
+            work = await openalex.find_by_title(title, int(year) if year.isdigit() else None)
+            if not work:
+                raise ValueError(
+                    f"Scopus record {identifier} has no DOI and no exact title match "
+                    f"in OpenAlex ({title!r}); pass a DOI or OpenAlex work ID instead."
+                )
+            return work
+        identifier = doi
+    work = await openalex.get_work(identifier)
+    if not work:
+        raise ValueError(f"OpenAlex has no work for {identifier!r}.")
+    return work
+
+
+async def _openalex_seed_sets(seed_ids: list, mode: str, max_citing: int = 500):
+    """Per-seed reference sets ('references') or citer sets ('citing').
+
+    Returns (seed_sets, seed_meta, skipped) keyed by OpenAlex work ID, the
+    same structure the Scopus branches build.
+    """
+    seed_sets: dict = {}
+    seed_meta: dict = {}
+    skipped: list = []
+    for raw_id in seed_ids:
+        try:
+            work = await _resolve_openalex_work(raw_id)
+            wid = short_id(work.get('id'))
+            rec = clean_openalex_work(work)
+            seed_meta[wid] = {
+                'title': rec['title'] or wid,
+                'creator': rec['creator'],
+                'year': rec['year'],
+                'venue': rec['publication_name'],
+            }
+            if mode == 'references':
+                keys = {short_id(r) for r in (work.get('referenced_works') or [])}
+            else:
+                citers, _ = await openalex.citing(wid, max_results=max_citing)
+                keys = {short_id(c.get('id')) for c in citers}
+            keys.discard(wid)
+        except Exception as exc:
+            logger.warning(f"openalex {mode} for {raw_id}: {exc}")
+            skipped.append(f"{raw_id} ({exc})")
+            continue
+        if not keys:
+            # Common for AIS eLibrary papers: OpenAlex indexes them without
+            # reference lists.
+            what = 'references' if mode == 'references' else 'citing works'
+            skipped.append(f"{raw_id} (OpenAlex {wid} lists no {what})")
+            continue
+        seed_sets[wid] = keys
+    return seed_sets, seed_meta, skipped
+
+
+def _bibtex_author(display_name: str) -> str:
+    """'Norman P. Hummon' -> 'Hummon, Norman P.' (BibTeX 'Last, First')."""
+    parts = display_name.split()
+    return f"{parts[-1]}, {' '.join(parts[:-1])}" if len(parts) > 1 else display_name
+
+
+async def _bibtex_target(identifier: str):
+    """(doi, fallback metadata, origin) for one identifier.
+
+    DOIs pass straight through. OpenAlex IDs and Scopus IDs are looked up
+    for their DOI, keeping their metadata for a generated entry when there
+    is none (Scopus metadata needs no subscriber entitlement).
+    """
+    key = openalex_work_key(identifier)
+    if key and key.startswith('doi:'):
+        return key[4:], None, None
+    if key:
+        work = await openalex.get_work(key)
+        if not work:
+            raise ValueError("not found in OpenAlex")
+        rec = clean_openalex_work(work)
+        authors = [_bibtex_author(a['author']['display_name'])
+                   for a in (work.get('authorships') or [])
+                   if (a.get('author') or {}).get('display_name')]
+        meta = {'title': rec['title'], 'authors': authors,
+                'year': rec['year'], 'venue': rec['publication_name']}
+        return rec['doi'], meta, 'OpenAlex'
+    details = clean_abstract_details(await client.get_abstract(to_scopus_id(identifier)))
+    if not details.get('title'):
+        raise ValueError("not found in Scopus")
+    authors = []
+    for a in details.get('authors') or []:
+        surname = a.get('surname') or (a.get('name') or '').split(' ')[0]
+        if surname:
+            initials = a.get('initials')
+            authors.append(f"{surname}, {initials}" if initials else surname)
+    meta = {'title': details.get('title'), 'authors': authors,
+            'year': (details.get('cover_date') or '')[:4] or None,
+            'venue': details.get('publication_name')}
+    return details.get('doi'), meta, 'Scopus'
+
+
+def _flatten_row(row: dict) -> dict:
+    """CSV-friendly: {'year', 'value'} metrics become value + _year columns,
+    lists become '; '-joined strings."""
+    flat = {}
+    for k, v in row.items():
+        if isinstance(v, dict) and set(v) == {'year', 'value'}:
+            flat[k] = v['value']
+            flat[f'{k}_year'] = v['year']
+        elif isinstance(v, list):
+            flat[k] = '; '.join(str(x) for x in v)
+        else:
+            flat[k] = v
+    return flat
+
+
+def _write_rows_csv(rows: list, prefix: str):
+    import csv
+    flat = [_flatten_row(r) for r in rows]
+    columns = []
+    for r in flat:
+        columns.extend(k for k in r if k not in columns)
+    ts = _today_datetime.now().strftime('%Y%m%dT%H%M%S')
+    path = _output_dir() / f'{prefix}-{len(rows)}-{ts}.csv'
+    with path.open('w', newline='', encoding='utf-8') as f:
+        writer = csv.DictWriter(f, fieldnames=columns)
+        writer.writeheader()
+        writer.writerows(flat)
+    return path
+
+
+def _network_response(label: str, file_prefix: str, seed_sets: dict, seed_meta: dict,
+                      n_seeds: int, params_note: str, skipped: list,
+                      skipped_reason: str, source: str, min_shared: int):
+    """Shared tail of bibliographic_coupling and co_citation."""
+    edges = compute_pairwise_edges(seed_sets, min_shared=min_shared)
+    nodes = [
+        {
+            'id': sid,
+            'label': _make_node_label(seed_meta.get(sid, {}), node_id=sid),
+            'title': seed_meta.get(sid, {}).get('title'),
+            'creator': seed_meta.get(sid, {}).get('creator'),
+            'year': seed_meta.get(sid, {}).get('year'),
+            'venue': seed_meta.get(sid, {}).get('venue'),
+        }
+        for sid in seed_sets
+    ]
+    prefix = f'{file_prefix}-openalex' if source == 'openalex' else file_prefix
+    paths = write_graph_to_disk(nodes, edges, f'{prefix}-{n_seeds}seeds')
+
+    top10 = edges[:10]
+    top10_lines = [
+        f"  {seed_meta.get(e['source'], {}).get('title', e['source'])!r} → "
+        f"{seed_meta.get(e['target'], {}).get('title', e['target'])!r}: "
+        f"weight={e['weight']}, cosine={e['cosine']:.4f}"
+        for e in top10
+    ]
+    text = (
+        f"{label}: {len(seed_sets)}/{n_seeds} seeds processed, "
+        f"{len(edges)} edges emitted ({params_note}).\n"
+    )
+    if source == 'openalex':
+        text += "Source: OpenAlex (node IDs are OpenAlex work IDs).\n"
+    text += (
+        f"Graph files:\n"
+        f"  GraphML: {paths['graphml_path']}\n"
+        f"  CSV:     {paths['csv_path']}\n"
+    )
+    if paths.get('png_path'):
+        text += f"  PNG:     {paths['png_path']}\n"
+    text += f"\nTop {len(top10)} edges by weight:\n"
+    text += '\n'.join(top10_lines) if top10_lines else '  (none)'
+    if skipped:
+        text += f"\n\nSkipped ({skipped_reason}): {skipped}"
+    return [types.TextContent(type="text", text=text)]
+
 
 @server.call_tool()
 async def handle_call_tool(
@@ -457,9 +807,14 @@ async def handle_call_tool(
             if not scopus_id:
                 raise ValueError("scopus_id is required")
 
-            # Forward citations via centralized REF(2-s2.0-<id>) construction.
-            raw_data = await client.get_citing_papers(scopus_id, count=count, sort=sort)
-            results = clean_search_results(raw_data)
+            if _source(arguments) == 'openalex':
+                work = await _resolve_openalex_work(scopus_id)
+                works, _ = await openalex.citing(short_id(work['id']), max_results=count, sort=sort)
+                results = [clean_openalex_work(w) for w in works]
+            else:
+                # Forward citations via centralized REF(2-s2.0-<id>) construction.
+                raw_data = await client.get_citing_papers(scopus_id, count=count, sort=sort)
+                results = clean_search_results(raw_data)
 
             return [types.TextContent(type="text", text=str(results))]
 
@@ -484,6 +839,18 @@ async def handle_call_tool(
             if not scopus_id:
                 raise ValueError("scopus_id is required")
 
+            if _source(arguments) == 'openalex':
+                work = await _resolve_openalex_work(scopus_id)
+                refs = await openalex.references(work, limit=count)
+                references = [clean_openalex_work(w) for w in refs]
+                if not references:
+                    return [types.TextContent(
+                        type="text",
+                        text=("OpenAlex lists no references for this work. Reference "
+                              "coverage varies by publisher; try source='scopus'.")
+                    )]
+                return [types.TextContent(type="text", text=str(references))]
+
             raw_data = await client.get_references(scopus_id)
             references = clean_references(raw_data, limit=count)
             if not references:
@@ -497,14 +864,20 @@ async def handle_call_tool(
         elif name == "search_all":
             query = arguments.get("query")
             max_results = arguments.get("max_results", 200)
-            sort = arguments.get("sort", "coverDate")
+            source = _source(arguments)
 
             if not query:
                 raise ValueError("query is required")
 
-            raw_data = await client.search_all(query, max_results=max_results, sort=sort)
-            results = clean_search_results(raw_data)
-            meta = raw_data.get('_meta', {})
+            if source == 'openalex':
+                sort = arguments.get("sort", "relevance")
+                works, meta = await openalex.search(query, max_results=max_results, sort=sort)
+                results = [clean_openalex_work(w) for w in works]
+            else:
+                sort = arguments.get("sort", "coverDate")
+                raw_data = await client.search_all(query, max_results=max_results, sort=sort)
+                results = clean_search_results(raw_data)
+                meta = raw_data.get('_meta', {})
 
             if should_write_to_disk(results):
                 paths = write_results_to_disk(results, query)
@@ -521,6 +894,8 @@ async def handle_call_tool(
             else:
                 text = str(results)
 
+            if source == 'openalex':
+                text = "Source: OpenAlex (title and abstract search).\n" + text
             if meta.get('note'):
                 text += f"\n\nNote: {meta['note']}"
 
@@ -529,6 +904,7 @@ async def handle_call_tool(
         elif name == "bibliographic_coupling":
             seed_ids_raw = arguments.get("seed_ids", [])
             min_shared = int(arguments.get("min_shared", 2))
+            source = _source(arguments)
 
             if not seed_ids_raw:
                 raise ValueError("seed_ids is required and must be non-empty")
@@ -537,74 +913,51 @@ async def handle_call_tool(
             seed_meta: dict = {}
             skipped: list = []
 
-            for raw_id in seed_ids_raw:
-                sid = to_scopus_id(str(raw_id))
-                try:
-                    raw = await client.get_references(sid)
-                    refs = clean_references(raw)
-                    ref_keys: set = set()
-                    for r in refs:
-                        key = r.get('scopus_id') or r.get('doi')
-                        if key and key != sid:
-                            ref_keys.add(key)
-                    if not ref_keys:
+            if source == 'openalex':
+                seed_sets, seed_meta, skipped = await _openalex_seed_sets(seed_ids_raw, 'references')
+            else:
+                for raw_id in seed_ids_raw:
+                    sid = to_scopus_id(str(raw_id))
+                    try:
+                        raw = await client.get_references(sid)
+                        refs = clean_references(raw)
+                        ref_keys: set = set()
+                        for r in refs:
+                            key = r.get('scopus_id') or r.get('doi')
+                            if key and key != sid:
+                                ref_keys.add(key)
+                        if not ref_keys:
+                            skipped.append(sid)
+                            logger.info(f"bibliographic_coupling: {sid} has no usable refs, skipping")
+                            continue
+                        seed_sets[sid] = ref_keys
+                        # The REF view's coredata often lacks the title; fall back to
+                        # the (cached) abstract so labels are not bare IDs.
+                        details = clean_abstract_details(raw)
+                        if not details.get('title'):
+                            details = clean_abstract_details(await client.get_abstract(sid))
+                        authors = details.get('authors') or []
+                        seed_meta[sid] = {
+                            'title': details.get('title') or sid,
+                            'creator': authors[0].get('name') if authors else None,
+                            'year': (details.get('cover_date') or '')[:4] or None,
+                            'venue': details.get('publication_name'),
+                        }
+                    except Exception as exc:
+                        logger.warning(f"bibliographic_coupling: error for {sid}: {exc}")
                         skipped.append(sid)
-                        logger.info(f"bibliographic_coupling: {sid} has no usable refs, skipping")
-                        continue
-                    seed_sets[sid] = ref_keys
-                    # REF view response carries the seed's own coredata — no extra call needed
-                    details = clean_abstract_details(raw)
-                    authors = details.get('authors') or []
-                    seed_meta[sid] = {
-                        'title': details.get('title') or sid,
-                        'creator': authors[0].get('name') if authors else None,
-                        'year': (details.get('cover_date') or '')[:4] or None,
-                        'venue': details.get('publication_name'),
-                    }
-                except Exception as exc:
-                    logger.warning(f"bibliographic_coupling: error for {sid}: {exc}")
-                    skipped.append(sid)
 
-            edges = compute_pairwise_edges(seed_sets, min_shared=min_shared)
-            nodes = [
-                {
-                    'id': sid,
-                    'label': _make_node_label(seed_meta.get(sid, {}), node_id=sid),
-                    'title': seed_meta.get(sid, {}).get('title'),
-                    'creator': seed_meta.get(sid, {}).get('creator'),
-                    'year': seed_meta.get(sid, {}).get('year'),
-                    'venue': seed_meta.get(sid, {}).get('venue'),
-                }
-                for sid in seed_sets
-            ]
-            paths = write_graph_to_disk(nodes, edges, f'bibcoupling-{len(seed_ids_raw)}seeds')
-
-            top10 = edges[:10]
-            top10_lines = [
-                f"  {seed_meta.get(e['source'], {}).get('title', e['source'])!r} → "
-                f"{seed_meta.get(e['target'], {}).get('title', e['target'])!r}: "
-                f"weight={e['weight']}, cosine={e['cosine']:.4f}"
-                for e in top10
-            ]
-            text = (
-                f"Bibliographic coupling: {len(seed_sets)}/{len(seed_ids_raw)} seeds processed, "
-                f"{len(edges)} edges emitted (min_shared={min_shared}).\n"
-                f"Graph files:\n"
-                f"  GraphML: {paths['graphml_path']}\n"
-                f"  CSV:     {paths['csv_path']}\n"
+            return _network_response(
+                'Bibliographic coupling', 'bibcoupling', seed_sets, seed_meta,
+                len(seed_ids_raw), f'min_shared={min_shared}', skipped,
+                'no usable references or API error', source, min_shared,
             )
-            if paths.get('png_path'):
-                text += f"  PNG:     {paths['png_path']}\n"
-            text += f"\nTop {len(top10)} edges by weight:\n"
-            text += '\n'.join(top10_lines) if top10_lines else '  (none)'
-            if skipped:
-                text += f"\n\nSkipped (no usable references or API error): {skipped}"
-            return [types.TextContent(type="text", text=text)]
 
         elif name == "co_citation":
             seed_ids_raw = arguments.get("seed_ids", [])
             min_shared = int(arguments.get("min_shared", 2))
             max_citing = int(arguments.get("max_citing_per_seed", 500))
+            source = _source(arguments)
 
             if not seed_ids_raw:
                 raise ValueError("seed_ids is required and must be non-empty")
@@ -613,79 +966,243 @@ async def handle_call_tool(
             seed_meta = {}
             skipped = []
 
-            for raw_id in seed_ids_raw:
-                sid = to_scopus_id(str(raw_id))
-                # Fetch seed metadata (one abstract call per seed)
-                try:
-                    raw_meta = await client.get_abstract(sid)
-                    details = clean_abstract_details(raw_meta)
-                    authors = details.get('authors') or []
-                    seed_meta[sid] = {
-                        'title': details.get('title') or sid,
-                        'creator': authors[0].get('name') if authors else None,
-                        'year': (details.get('cover_date') or '')[:4] or None,
-                        'venue': details.get('publication_name'),
-                    }
-                except Exception as exc:
-                    logger.warning(f"co_citation: metadata fetch failed for {sid}: {exc}")
-                    seed_meta[sid] = {'title': sid, 'creator': None, 'year': None, 'venue': None}
+            if source == 'openalex':
+                seed_sets, seed_meta, skipped = await _openalex_seed_sets(
+                    seed_ids_raw, 'citing', max_citing=max_citing)
+            else:
+                for raw_id in seed_ids_raw:
+                    sid = to_scopus_id(str(raw_id))
+                    # Fetch seed metadata (one abstract call per seed)
+                    try:
+                        raw_meta = await client.get_abstract(sid)
+                        details = clean_abstract_details(raw_meta)
+                        authors = details.get('authors') or []
+                        seed_meta[sid] = {
+                            'title': details.get('title') or sid,
+                            'creator': authors[0].get('name') if authors else None,
+                            'year': (details.get('cover_date') or '')[:4] or None,
+                            'venue': details.get('publication_name'),
+                        }
+                    except Exception as exc:
+                        logger.warning(f"co_citation: metadata fetch failed for {sid}: {exc}")
+                        seed_meta[sid] = {'title': sid, 'creator': None, 'year': None, 'venue': None}
 
-                # Fetch citing papers via search_all with REF() query
-                try:
-                    raw_citers = await client.search_all(
-                        f"REF({to_eid(sid)})", max_results=max_citing
-                    )
-                    citers = clean_search_results(raw_citers)
-                    citer_ids: set = set()
-                    for c in citers:
-                        cid = c.get('scopus_id')
-                        if cid and cid != sid:
-                            citer_ids.add(cid)
-                    if not citer_ids:
+                    # Fetch citing papers via search_all with REF() query
+                    try:
+                        raw_citers = await client.search_all(
+                            f"REF({to_eid(sid)})", max_results=max_citing
+                        )
+                        citers = clean_search_results(raw_citers)
+                        citer_ids: set = set()
+                        for c in citers:
+                            cid = c.get('scopus_id')
+                            if cid and cid != sid:
+                                citer_ids.add(cid)
+                        if not citer_ids:
+                            skipped.append(sid)
+                            logger.info(f"co_citation: {sid} has no citing papers, skipping")
+                            continue
+                        seed_sets[sid] = citer_ids
+                    except Exception as exc:
+                        logger.warning(f"co_citation: citing fetch failed for {sid}: {exc}")
                         skipped.append(sid)
-                        logger.info(f"co_citation: {sid} has no citing papers, skipping")
-                        continue
-                    seed_sets[sid] = citer_ids
-                except Exception as exc:
-                    logger.warning(f"co_citation: citing fetch failed for {sid}: {exc}")
-                    skipped.append(sid)
 
-            edges = compute_pairwise_edges(seed_sets, min_shared=min_shared)
-            nodes = [
-                {
-                    'id': sid,
-                    'label': _make_node_label(seed_meta.get(sid, {}), node_id=sid),
-                    'title': seed_meta.get(sid, {}).get('title'),
-                    'creator': seed_meta.get(sid, {}).get('creator'),
-                    'year': seed_meta.get(sid, {}).get('year'),
-                    'venue': seed_meta.get(sid, {}).get('venue'),
-                }
-                for sid in seed_sets
-            ]
-            paths = write_graph_to_disk(nodes, edges, f'cocitation-{len(seed_ids_raw)}seeds')
-
-            top10 = edges[:10]
-            top10_lines = [
-                f"  {seed_meta.get(e['source'], {}).get('title', e['source'])!r} → "
-                f"{seed_meta.get(e['target'], {}).get('title', e['target'])!r}: "
-                f"weight={e['weight']}, cosine={e['cosine']:.4f}"
-                for e in top10
-            ]
-            text = (
-                f"Co-citation: {len(seed_sets)}/{len(seed_ids_raw)} seeds processed, "
-                f"{len(edges)} edges emitted (min_shared={min_shared}, "
-                f"max_citing_per_seed={max_citing}).\n"
-                f"Graph files:\n"
-                f"  GraphML: {paths['graphml_path']}\n"
-                f"  CSV:     {paths['csv_path']}\n"
+            return _network_response(
+                'Co-citation', 'cocitation', seed_sets, seed_meta,
+                len(seed_ids_raw),
+                f'min_shared={min_shared}, max_citing_per_seed={max_citing}',
+                skipped, 'no citing papers or API error', source, min_shared,
             )
-            if paths.get('png_path'):
-                text += f"  PNG:     {paths['png_path']}\n"
-            text += f"\nTop {len(top10)} edges by weight:\n"
-            text += '\n'.join(top10_lines) if top10_lines else '  (none)'
-            if skipped:
-                text += f"\n\nSkipped (no citing papers or API error): {skipped}"
+
+        elif name == "get_journal_metrics":
+            raw_issns = [str(i).strip() for i in (arguments.get("issns") or []) if str(i).strip()]
+            source_ids = [str(i).strip() for i in (arguments.get("source_ids") or []) if str(i).strip()]
+            source = _source(arguments)
+            if not raw_issns and not source_ids:
+                raise ValueError("Give issns and/or source_ids.")
+            if len(raw_issns) + len(source_ids) > MAX_JOURNALS:
+                raise ValueError(f"At most {MAX_JOURNALS} journals per call.")
+            if source == 'openalex' and source_ids:
+                raise ValueError("OpenAlex has no Scopus source IDs; pass ISSNs, "
+                                 "or use source='scopus'.")
+
+            rows, not_found = [], []
+            issn_inputs = []
+            for raw in raw_issns:
+                compact = normalize_issn(raw)
+                if compact:
+                    issn_inputs.append((raw, compact))
+                else:
+                    not_found.append(f"{raw}: not a valid ISSN")
+
+            if source == 'openalex':
+                for raw, compact in issn_inputs:
+                    src = await openalex.get_source_by_issn(format_issn(compact))
+                    if src:
+                        rows.append({'input': raw, **clean_openalex_source(src)})
+                    else:
+                        not_found.append(f"{raw}: not in OpenAlex")
+                note = ("OpenAlex measures (2-year mean citedness, h-index, i10-index); "
+                        "not comparable with SJR, SNIP or CiteScore.")
+            else:
+                srcid_issns = {}
+                for sid in source_ids:
+                    try:
+                        found = await client.source_id_issns(sid)
+                    except Exception as exc:
+                        not_found.append(f"source_id {sid}: lookup failed ({exc})")
+                        continue
+                    if not found:
+                        not_found.append(f"source_id {sid}: no Scopus records")
+                        continue
+                    srcid_issns[sid] = [c for c in (normalize_issn(found['issn']),
+                                                    normalize_issn(found['eissn'])) if c]
+                candidates = sorted({c for _, c in issn_inputs}
+                                    | {c for cs in srcid_issns.values() for c in cs})
+                entries = await client.serial_titles(candidates) if candidates else []
+                by_issn, by_srcid = {}, {}
+                for entry in entries:
+                    cleaned = clean_serial_entry(entry)
+                    for c in serial_entry_issns(entry):
+                        by_issn.setdefault(c, cleaned)
+                    if cleaned['source_id']:
+                        by_srcid.setdefault(str(cleaned['source_id']), cleaned)
+
+                for raw, compact in issn_inputs:
+                    hit = by_issn.get(compact)
+                    if hit:
+                        rows.append({'input': raw, **hit})
+                    else:
+                        not_found.append(
+                            f"{raw}: not in Serial Title under this ISSN. Scopus may "
+                            f"list the journal under its other (print/electronic) ISSN; "
+                            f"try that, or its source_id.")
+                for sid, cands in srcid_issns.items():
+                    hit = by_srcid.get(sid) or next(
+                        (by_issn[c] for c in cands if c in by_issn), None)
+                    if hit:
+                        rows.append({'input': f"source_id {sid}", **hit})
+                    else:
+                        not_found.append(f"source_id {sid}: no Serial Title entry for "
+                                         f"ISSNs {[format_issn(c) for c in cands]}")
+                note = "Latest year of each metric from the Scopus Serial Title API."
+
+            result = {'source': source, 'journals': rows, 'not_found': not_found, 'note': note}
+            if rows:
+                result['csv_path'] = str(_write_rows_csv(rows, f'journals-{source}'))
+            return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        elif name == "get_bibtex":
+            identifiers = [str(i).strip() for i in (arguments.get("identifiers") or [])
+                           if str(i).strip()]
+            if not identifiers:
+                raise ValueError("identifiers is required and must be non-empty")
+            if len(identifiers) > MAX_BIBTEX:
+                raise ValueError(f"At most {MAX_BIBTEX} identifiers per call.")
+
+            targets = []
+            failures = []
+            for ident in identifiers:
+                try:
+                    targets.append((ident, *await _bibtex_target(ident)))
+                except Exception as exc:
+                    failures.append(f"{ident}: {exc}")
+
+            dois = sorted({doi.lower() for _, doi, _, _ in targets if doi})
+            fetched = await fetch_bibtex(dois) if dois else {}
+
+            entries = []
+            generated = 0
+            seen_dois = set()
+            for ident, doi, meta, origin in targets:
+                if doi:
+                    doi = doi.lower()
+                    if doi in seen_dois:
+                        continue  # same paper given twice
+                    seen_dois.add(doi)
+                    entry, err = fetched[doi]
+                    if entry:
+                        entries.append(entry)
+                        continue
+                    if not meta:
+                        failures.append(f"{ident}: {err}")
+                        continue
+                entry = generated_entry(meta or {}, origin or 'available')
+                if entry:
+                    entries.append(entry)
+                    generated += 1
+                else:
+                    failures.append(f"{ident}: no DOI and no title to build an entry from")
+
+            entries = make_keys_unique(entries)
+            text = f"{len(entries)} BibTeX entries"
+            if generated:
+                text += f" ({generated} generated from metadata; check them)"
+            if entries:
+                ts = _today_datetime.now().strftime('%Y%m%dT%H%M%S')
+                path = _output_dir() / f'bibtex-{len(entries)}-{ts}.bib'
+                path.write_text('\n\n'.join(entries) + '\n', encoding='utf-8')
+                text += f". Written to: {path}\n"
+            else:
+                text += ".\n"
+            if failures:
+                text += "Not resolved:\n" + '\n'.join(f"  {f}" for f in failures) + "\n"
+            if entries:
+                shown = entries[:50]
+                text += "\n" + '\n\n'.join(shown)
+                if len(entries) > len(shown):
+                    text += f"\n\n({len(entries) - len(shown)} more in the file.)"
             return [types.TextContent(type="text", text=text)]
+
+        elif name == "publication_counts":
+            query = arguments.get("query")
+            if not query:
+                raise ValueError("query is required")
+            source = _source(arguments)
+            from_year = arguments.get("from_year")
+            to_year = arguments.get("to_year")
+            from_year = int(from_year) if from_year is not None else None
+            to_year = int(to_year) if to_year is not None else None
+            if from_year is not None and to_year is not None and from_year > to_year:
+                raise ValueError(f"from_year {from_year} is after to_year {to_year}")
+
+            if source == 'openalex':
+                counts, total = await openalex.yearly_counts(query, from_year, to_year)
+                note = "OpenAlex title-and-abstract match."
+            else:
+                if from_year is None or to_year is None:
+                    raise ValueError(
+                        "Scopus publication_counts needs from_year and to_year "
+                        "(one request per year); OpenAlex does not."
+                    )
+                if to_year - from_year + 1 > MAX_SCOPUS_YEARS:
+                    raise ValueError(
+                        f"Scopus publication_counts spans at most {MAX_SCOPUS_YEARS} "
+                        f"years; split the range or use source='openalex'."
+                    )
+                counts = await client.yearly_counts(query, from_year, to_year)
+                total = sum(counts.values())
+                note = "Scopus search hits per PUBYEAR for the query as written."
+
+            # Years with no records are absent from grouped results; show them
+            # as zero within the requested range so gaps are visible.
+            if counts or (from_year is not None and to_year is not None):
+                lo = from_year if from_year is not None else min(counts)
+                hi = to_year if to_year is not None else max(counts)
+                counts = {y: counts.get(y, 0) for y in range(lo, hi + 1)}
+            current_year = _today_date.today().year
+            if counts and max(counts) >= current_year:
+                note += f" {current_year} is incomplete."
+            peak = max(counts, key=counts.get) if any(counts.values()) else None
+            result = {
+                'source': source,
+                'query': query,
+                'counts': {str(y): n for y, n in counts.items()},
+                'total': total,
+                'peak_year': peak,
+                'note': note,
+            }
+            return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
         elif name == "get_server_info":
             return [types.TextContent(
@@ -722,28 +1239,55 @@ async def handle_call_tool(
             if sort_arg not in _SORT_MAP:
                 raise ValueError(f"sort must be one of {list(_SORT_MAP)}")
             api_sort = _SORT_MAP[sort_arg]
-
-            seed_id = to_scopus_id(str(seed_id_raw))
-
-            # Fetch seed metadata (generation 0)
-            try:
-                raw_meta = await client.get_abstract(seed_id)
-                details = clean_abstract_details(raw_meta)
-            except Exception as exc:
+            source = _source(arguments)
+            if source == 'openalex' and sort_arg == 'relevancy':
                 raise ValueError(
-                    f"Could not fetch seed metadata for {seed_id}: {exc}"
-                ) from exc
+                    "sort='relevancy' is Scopus-only; OpenAlex cannot rank citing "
+                    "works by relevance. Use 'citedby' or 'coverDate'."
+                )
 
-            seed_paper = {
-                'scopus_id': seed_id,
-                'doi': details.get('doi'),
-                'title': details.get('title'),
-                'year': (details.get('cover_date') or '')[:4] or None,
-                'venue': details.get('publication_name'),
-                'generation': 0,
-                'parents': [],
-                'cited_by_count': details.get('cited_by_count'),
-            }
+            if source == 'openalex':
+                try:
+                    seed_work = await _resolve_openalex_work(seed_id_raw)
+                except Exception as exc:
+                    raise ValueError(
+                        f"Could not resolve seed {seed_id_raw} in OpenAlex: {exc}"
+                    ) from exc
+                seed_rec = clean_openalex_work(seed_work)
+                seed_id = seed_rec['openalex_id']
+                seed_paper = {
+                    'scopus_id': None,
+                    'openalex_id': seed_id,
+                    'doi': seed_rec['doi'],
+                    'title': seed_rec['title'],
+                    'year': seed_rec['year'],
+                    'venue': seed_rec['publication_name'],
+                    'generation': 0,
+                    'parents': [],
+                    'cited_by_count': seed_rec['cited_by_count'],
+                }
+            else:
+                seed_id = to_scopus_id(str(seed_id_raw))
+
+                # Fetch seed metadata (generation 0)
+                try:
+                    raw_meta = await client.get_abstract(seed_id)
+                    details = clean_abstract_details(raw_meta)
+                except Exception as exc:
+                    raise ValueError(
+                        f"Could not fetch seed metadata for {seed_id}: {exc}"
+                    ) from exc
+
+                seed_paper = {
+                    'scopus_id': seed_id,
+                    'doi': details.get('doi'),
+                    'title': details.get('title'),
+                    'year': (details.get('cover_date') or '')[:4] or None,
+                    'venue': details.get('publication_name'),
+                    'generation': 0,
+                    'parents': [],
+                    'cited_by_count': details.get('cited_by_count'),
+                }
 
             seen: set = {seed_id}
             all_papers: dict = {seed_id: seed_paper}
@@ -758,6 +1302,32 @@ async def handle_call_tool(
                 year, venue, cited_by_count.  The only difference between directions
                 is which client method is called and how the raw result is mapped.
                 """
+                if source == 'openalex':
+                    if direction == 'forward':
+                        works, _ = await openalex.citing(
+                            parent_id, max_results=max_per_node, sort=sort_arg)
+                    else:
+                        # Singleton lookups are free and cached; hydrating the
+                        # reference list costs one request per 50 references.
+                        parent_work = await openalex.get_work(parent_id)
+                        works = (await openalex.references(parent_work, limit=max_per_node)
+                                 if parent_work else [])
+                    result = []
+                    for w in works:
+                        rec = clean_openalex_work(w)
+                        if not rec['openalex_id']:
+                            continue
+                        result.append({
+                            'key': rec['openalex_id'],
+                            'scopus_id': None,
+                            'openalex_id': rec['openalex_id'],
+                            'doi': rec['doi'],
+                            'title': rec['title'],
+                            'year': rec['year'],
+                            'venue': rec['publication_name'],
+                            'cited_by_count': rec['cited_by_count'],
+                        })
+                    return result
                 if direction == 'forward':
                     raw = await client.search_all(
                         f"REF({to_eid(parent_id)})",
@@ -851,14 +1421,17 @@ async def handle_call_tool(
                             'parents': [parent_id],
                             'cited_by_count': cbc_str,
                         }
+                        if p.get('openalex_id'):
+                            all_papers[key]['openalex_id'] = p['openalex_id']
                         gen_counts[gen] = gen_counts.get(gen, 0) + 1
 
                         # Expansion criteria for the next generation.
-                        # Only expand papers we can fetch by Scopus ID.
+                        # Only expand papers the backend can fetch by ID.
                         # min_citing applies to forward only (backward refs lack cbc).
-                        if gen < generations and p['scopus_id']:
+                        expand_id = p.get('openalex_id') or p['scopus_id']
+                        if gen < generations and expand_id:
                             if direction == 'backward' or cbc >= min_citing:
-                                next_to_expand.append(p['scopus_id'])
+                                next_to_expand.append(expand_id)
 
                 to_expand = next_to_expand
                 if not to_expand:
@@ -876,7 +1449,8 @@ async def handle_call_tool(
             import json as _json
             from datetime import datetime
             _ts = datetime.now().strftime('%Y%m%dT%H%M%S')
-            _slug = _query_slug(f'lineage-{seed_id}')
+            _slug = _query_slug(
+                f'lineage-openalex-{seed_id}' if source == 'openalex' else f'lineage-{seed_id}')
             base_fname = f'scopus-{_slug}-{_ts}'
 
             json_path = write_lineage_to_disk(
@@ -986,6 +1560,8 @@ async def handle_call_tool(
                     f"Corpus written to: {json_path}\n"
                     f"Corpus (base64, UTF-8 JSON): {corpus_b64}\n"
                 )
+                if source == 'openalex':
+                    text += "Source: OpenAlex (node IDs are OpenAlex work IDs).\n"
                 if not _spc_complete:
                     text += (
                         "SPC arc weights: NOT computed (no edges in lineage graph; "
@@ -1062,7 +1638,11 @@ async def handle_call_tool(
                     if sd_data:
                         root = sd_data.get('full-text-retrieval-response') or {}
                         candidate = (root.get('originalText') or '').strip()
-                        if len(candidate) > 500:
+                        # Same bar as diagnose_connection's full-text probe: an
+                        # abstract plus metadata can exceed a few hundred
+                        # characters, and abstract-grade text must never be
+                        # labelled full text. Shorter bodies fall through to OA.
+                        if len(candidate) >= FULLTEXT_MIN_CHARS:
                             text_body = candidate
                             provenance = "sciencedirect-fulltext"
                 except Exception as exc:

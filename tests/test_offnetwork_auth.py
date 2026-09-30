@@ -19,6 +19,8 @@ import pytest
 from scopus_mcp import config
 from scopus_mcp.client import ScopusClient, CANARY_SCOPUS_ID
 
+from tests.diag_fakes import capability_ok
+
 
 def _run(coro):
     loop = asyncio.new_event_loop()
@@ -331,7 +333,10 @@ ENTITLEMENT_400_MSG = (
 
 
 def _outcomes(abstract_result, search_result):
-    def side_effect(method, endpoint, *args, **kwargs):
+    def side_effect(method, endpoint, params=None, *args, **kwargs):
+        capability = capability_ok(endpoint, params)
+        if capability is not None:
+            return capability
         outcome = abstract_result if CANARY_SCOPUS_ID in endpoint else search_result
         if isinstance(outcome, Exception):
             raise outcome

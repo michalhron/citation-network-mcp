@@ -13,5 +13,6 @@ import pytest
 @pytest.fixture(autouse=True)
 def _isolate_credentials(monkeypatch):
     monkeypatch.setenv('SCOPUS_DISABLE_SECRET_STORE', '1')
-    for var in ('SCOPUS_INSTTOKEN', 'ELSEVIER_INSTTOKEN', 'SCOPUS_PROXY'):
+    for var in ('SCOPUS_INSTTOKEN', 'ELSEVIER_INSTTOKEN', 'SCOPUS_PROXY',
+                'OPENALEX_API_KEY'):
         monkeypatch.delenv(var, raising=False)

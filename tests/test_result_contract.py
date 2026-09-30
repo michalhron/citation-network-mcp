@@ -91,6 +91,7 @@ class TestWriteResultsToDisk(unittest.TestCase):
         expected = [
             'scopus_id', 'title', 'creator', 'publication_name',
             'cover_date', 'doi', 'cited_by_count', 'aggregation_type', 'url',
+            'openalex_id', 'source',
         ]
         with tempfile.TemporaryDirectory() as td:
             with patch.dict(os.environ, {'SCOPUS_MCP_OUTPUT_DIR': td}):

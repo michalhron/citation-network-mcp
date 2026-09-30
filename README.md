@@ -1,296 +1,205 @@
-# Scopus MCP Server
+# Scopus MCP
 
-<!-- mcp-name: io.github.qwe4559999/scopus-mcp -->
+An MCP server for literature and citation-network analysis. It gives Claude and
+other MCP clients search, citation and reference retrieval, full text, and
+bibliometric networks (bibliographic coupling, co-citation, citation lineage
+with main-path analysis), from two data sources:
 
-[中文](README_CN.md) | **English**
+- **Scopus** (Elsevier API): the most complete source, but search, citations
+  and references need your institution's Scopus subscription.
+- **OpenAlex**: free and open, no subscription needed. Pass `source="openalex"`
+  to the search, citation, reference and network tools.
 
-> **💡 Check out the [Interaction Guide & Prompt Examples](USAGE_EXAMPLES.md) to see how to chat with this tool!**
+Started as a fork of [qwe4559999/scopus-mcp](https://github.com/qwe4559999/scopus-mcp)
+and now developed independently; see [Origins](#origins-and-credits).
 
-This is a Model Context Protocol (MCP) server that provides access to the Elsevier Scopus API. It allows AI assistants to search for academic papers, retrieve abstracts, and look up author profiles.
+[中文 (older upstream version)](README_CN.md) · [Prompt examples](USAGE_EXAMPLES.md) ·
+[Changelog](CHANGELOG.md) · [Roadmap](ROADMAP.md)
 
-**Please note that requesting an Elsevier Scopus API key generally requires that your organization or institution has a subscription to Elsevier database services. Additionally, to run this tool without manual setup, your device must have the `uv` package manager installed.**
+## What it does
+
+| Tool | What it returns | OpenAlex |
+| --- | --- | --- |
+| `search_scopus` | First page of a Scopus search | — |
+| `search_all` | Every page of a search, up to `max_results`; large sets are written to JSON and CSV | ✓ |
+| `get_abstract_details` | Full record for one document, abstract backfilled from OpenAlex or Crossref when Scopus withholds it | — |
+| `resolve_identifier` | Scopus ID, EID, DOI and PII for any one of them | — |
+| `get_author_profile` | Scopus author profile | — |
+| `get_references` | Backward citations: the document's reference list | ✓ |
+| `get_citing_papers` | Forward citations: documents citing it | ✓ |
+| `get_fulltext` | Full text via ScienceDirect, then open access, then abstract, with provenance | — |
+| `bibliographic_coupling` | Seed papers linked by shared references (the research front); GraphML, CSV, PNG | ✓ |
+| `co_citation` | Seed papers linked by being cited together (the intellectual base); GraphML, CSV, PNG | ✓ |
+| `get_journal_metrics` | SJR, SNIP and CiteScore for ISSNs or Scopus source IDs (e.g. a litbaskets basket), as JSON and CSV; OpenAlex gives its own measures instead | ✓ |
+| `get_bibtex` | BibTeX for DOIs, Scopus IDs or OpenAlex IDs, as a `.bib` file; entries for papers without a DOI are generated from metadata and marked | — |
+| `publication_counts` | Publications per year for a query, e.g. to chart a topic's rise and fall | ✓ |
+| `citation_lineage` | Multi-generation forward or backward walk with search-path-count main path; JSON, interactive HTML, PNG | ✓ |
+| `diagnose_connection` | Which APIs your current access entitles, and which tools will fail | — |
+| `get_quota_status`, `get_server_info` | Scopus quota; server version | — |
+
+Graph files open in [VOSviewer](https://www.vosviewer.com/), Gephi or Pajek.
+Output goes to `SCOPUS_MCP_OUTPUT_DIR` (default `~/scopus-mcp-output`).
+
+### Choosing a source
+
+Scopus and OpenAlex IDs differ, so never mix sources within one analysis.
+With `source="openalex"`, IDs may be DOIs, OpenAlex work IDs (`W…`) or Scopus
+IDs. Scopus IDs are resolved to a DOI through Scopus metadata, which needs no
+subscription; records without a DOI are matched by exact title within one
+year.
+
+OpenAlex coverage is thinner. In a September 2026 check, a 2025 journal
+article had 171 references in Scopus and 132 in OpenAlex, and AIS eLibrary
+conference papers (ICIS, AMCIS) had no reference lists in OpenAlex at all, so
+coupling on conference papers needs Scopus. OpenAlex search matches title and
+abstract only; quote phrases (`"organizing vision"`).
+
+## Install
+
+Requires [uv](https://docs.astral.sh/uv/). Not yet on PyPI under its own
+name: `uvx scopus-mcp` installs the older upstream package, without the
+features above. Install from this repository instead, pinned to a commit so
+upgrades are deliberate:
+
+```json
+{
+  "mcpServers": {
+    "scopus-assistant": {
+      "command": "uvx",
+      "args": [
+        "--from",
+        "git+https://github.com/michalhron/scopus-mcp.git@<commit-sha>",
+        "scopus-mcp"
+      ],
+      "env": {
+        "SCOPUS_API_KEY": "YOUR_KEY"
+      }
+    }
+  }
+}
+```
+
+Claude Desktop reads this from
+`~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or
+`%APPDATA%\Claude\claude_desktop_config.json` (Windows). Other MCP clients
+(Claude Code, Cursor) take the same command and arguments. Restart the client
+after editing.
+
+Get an API key at the [Elsevier Developer Portal](https://dev.elsevier.com/).
+Register with an institutional email address; public email domains may be
+rejected. The server needs a key
+to start, even for OpenAlex-only use; with DOIs or OpenAlex IDs as input, no
+Scopus calls are made.
 
 ## Configuration
 
-### Setup Steps
-1.  Go to [Elsevier Developer Portal](https://dev.elsevier.com/) to apply for an API key.
-2.  Create a `config.json` file in the project root (or copy from `config.json.example`) and fill in your key:
-    ```json
-    {
-      "api_key": "YOUR_KEY_HERE"
-    }
-    ```
-3.  Edit `MCP_tool_config.json`, modifying the folder path (pay attention to the slash direction).
-4.  Finally, import the configuration into your MCP client (e.g., Claude Desktop) by copying the content of `MCP_tool_config.json`.
-
-### Optional settings
-
-Every setting can be given either as an environment variable or as a `config.json`
-field; the environment variable wins.
+Every setting can be an environment variable (in the client config's `env`
+block) or a `config.json` field; the environment variable wins. Secrets can
+also live in the OS secret store, which beats `config.json`
+([below](#keep-secrets-out-of-config-files)).
 
 | Environment variable | `config.json` field | Default | Purpose |
 | --- | --- | --- | --- |
-| `SCOPUS_INSTTOKEN` | `insttoken` | — | Institutional token, sent as `X-ELS-Insttoken`. Entitles search and most ScienceDirect full text from any network. Prefer the OS secret store (see [below](#store-secrets-in-the-os-secret-store)). |
-| `SCOPUS_PROXY` | `proxy` | — | Proxy for `api.elsevier.com` traffic only, e.g. `socks5h://127.0.0.1:1080`. Schemes: `http`, `https`, `socks5`, `socks5h`. |
-| `SCOPUS_DISABLE_SECRET_STORE` | — | — | Set to any value to skip the OS secret-store lookup. |
-| `SCOPUS_PAGE_SIZE` | `page_size` | `25` | Records fetched per request by `search_all`. |
+| `SCOPUS_API_KEY` | `api_key` | — | Elsevier API key. Required. |
+| `SCOPUS_INSTTOKEN` | `insttoken` | — | Institutional token (`X-ELS-Insttoken`): subscriber access from any network. |
+| `SCOPUS_PROXY` | `proxy` | — | Proxy for Elsevier traffic only, e.g. `socks5h://127.0.0.1:1080`. |
+| `OPENALEX_API_KEY` | `openalex_api_key` | — | Free OpenAlex account key; raises the daily budget from $0.10 to $1. |
+| `SCOPUS_MCP_OUTPUT_DIR` | — | `~/scopus-mcp-output` | Where result, graph and full-text files go. |
+| `SCOPUS_PAGE_SIZE` | `page_size` | `25` | Records per Scopus request in `search_all` (1–200). |
+| `SCOPUS_MAX_RETRIES` | `max_retries` | `2` | Retries for timeouts, 429 and 5xx; `0` disables. |
 | `CACHE_TTL_SEARCH` | `cache_ttl_search` | `3600` | Search cache lifetime, seconds. |
-| `CACHE_TTL_ABSTRACT` | `cache_ttl_abstract` | `2592000` | Abstract cache lifetime, seconds. |
-| `CACHE_TTL_AUTHOR` | `cache_ttl_author` | `604800` | Author cache lifetime, seconds. |
-| `CACHE_TTL_DEFAULT` | `cache_ttl_default` | `86400` | Fallback cache lifetime, seconds. |
+| `CACHE_TTL_ABSTRACT` | `cache_ttl_abstract` | `2592000` | Abstract and reference cache lifetime. |
+| `CACHE_TTL_AUTHOR` | `cache_ttl_author` | `604800` | Author cache lifetime. |
+| `CACHE_TTL_DEFAULT` | `cache_ttl_default` | `86400` | Everything else. |
+| `SCOPUS_DISABLE_SECRET_STORE` | — | — | Any value skips the OS secret-store lookup. |
 
-**About `page_size`**: 25 is the per-request `count` ceiling for non-institutional
-Scopus keys — asking for more returns `400 INVALID_INPUT`, so 25 is the default and
-is safe on every tier. Institutional (subscriber) keys accept up to 200, which cuts
-the number of requests, and therefore quota burn, by 8x on large `search_all` calls.
-That entitlement is not detectable from the key itself, so raising the page size is
-an explicit opt-in; values are clamped to 1–200. If you set 200 and searches start
-failing with `400`, your key is not entitled to it — drop back to 25.
+`SCOPUS_PAGE_SIZE` above 25 works only for subscriber keys; others get
+`400 INVALID_INPUT`. 200 cuts requests, and quota use, eightfold on large
+searches.
 
-## 🚀 Quick Start (Zero Setup)
+### Keep secrets out of config files
 
-**Prerequisite**: You must have `uv` installed.
-- Windows: `powershell -c "irm https://astral.sh/uv/install.ps1 | iex"`
-- macOS/Linux: `curl -LsSf https://astral.sh/uv/install.sh | sh`
+The client config file is plain text, and Elsevier requires institutional
+tokens to be kept in a password-protected store. The server reads
+`api_key`, `insttoken` and `openalex_api_key` from the OS secret store under
+service `scopus-mcp`, between the environment and `config.json`.
 
-If you use Claude Desktop, you can skip downloading the code and just configure it directly:
-
-1.  **Get Key**: Get a free API Key from [Elsevier Developer Portal](https://dev.elsevier.com/). (⚠️ **Note**: Educational/Institutional email is recommended; public email domains may be rejected).
-2.  **Configure**: Edit `%APPDATA%\Claude\claude_desktop_config.json` (Windows) or `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS).
-3.  **Add**:
-
-```json
-{
-  "mcpServers": {
-    "scopus-assistant": {
-      "command": "uvx",
-      "args": [
-        "scopus-mcp"
-      ],
-      "env": {
-        "SCOPUS_API_KEY": "PUT_YOUR_KEY_HERE"
-      }
-    }
-  }
-}
-```
-
-*(If you don't have `uv`, see [Installation](#installation) for manual setup)*
-
-### Using with Trae
-
-In Trae Settings -> MCP Servers -> Click **Add** -> Select **Manual Configuration (JSON)**, then paste:
-
-```json
-{
-  "mcpServers": {
-    "scopus-assistant": {
-      "command": "uvx",
-      "args": [
-        "scopus-mcp"
-      ],
-      "env": {
-        "SCOPUS_API_KEY": "PUT_YOUR_KEY_HERE"
-      }
-    }
-  }
-}
-```
-
-### Using with Cursor
-
-1.  Open **Cursor Settings** -> **Features** -> **MCP Servers**.
-2.  Click **+ Add New MCP Server**.
-3.  Fill in the details:
-    *   **Name**: `scopus-mcp`
-    *   **Type**: `command` (stdio)
-    *   **Command**: `uvx scopus-mcp`
-4.  **Important**: You need to set `SCOPUS_API_KEY` in your system environment variables.
-
-## Installation
-
-1.  Ensure you have Python 3.10+ installed.
-2.  Install dependencies:
-    ```bash
-    pip install .
-    ```
-
-## Usage
-
-### Running the Server
-
-You can run the server using `uvx` (recommended) or directly with python.
-
-```bash
-# Using uvx
-uvx --from . scopus-mcp
-
-# Or directly
-python -m scopus_mcp.server
-```
-
-### Available Tools
-
-1.  **`search_scopus`**
-    -   Searches the Scopus database using the standard query syntax.
-    -   Arguments:
-        -   `query` (string): The search query (e.g., `TITLE("Artificial Intelligence")`).
-        -   `count` (integer): Number of results to return (default: 5).
-        -   `sort` (string): Sort order (e.g., `coverDate`).
-
-2.  **`get_abstract_details`**
-    -   Retrieves detailed information for a specific document.
-    -   Arguments:
-        -   `scopus_id` (string): The Scopus ID of the document.
-
-3.  **`get_author_profile`**
-    -   Retrieves an author's profile information.
-    -   Arguments:
-        -   `author_id` (string): The Scopus Author ID.
-
-4.  **`diagnose_connection`**
-    -   Checks connectivity and entitlement, and returns a JSON report with a one-line verdict.
-    -   No arguments. See [Remote access and institutional entitlement](#remote-access-and-institutional-entitlement).
-
-## Remote access and institutional entitlement
-
-Your API key authenticates you, but it does not by itself entitle you to
-subscriber content. Entitlement comes from your institution's Scopus
-subscription, and Elsevier recognizes it either from your institution's IP
-range or from an institutional token. Off campus and without a token, part of
-the API keeps working and part stops:
-
-| Works without subscriber entitlement | Requires entitlement |
-| --- | --- |
-| ID-based metadata: `get_abstract_details`, `get_author_profile`, `resolve_identifier` | Search: `search_scopus`, `search_all`, `get_citing_papers` |
-| | References: `get_references` and the graph tools built on it (`bibliographic_coupling`, `co_citation`, `citation_lineage`) |
-| | ScienceDirect full text via `get_fulltext` |
-
-The failure is misleading. When you are off-network without a token, the
-Scopus Search API rejects *every* query — including trivially valid ones like
-`ALL(gene)` — with HTTP 400 and `"statusText": "Error translating query"`.
-That reads like a syntax error, so the natural response is to start debugging
-a query that was never wrong. When this server sees that exact signature it
-appends a note pointing at entitlement, but the original Elsevier message is
-kept, because sometimes the query really is malformed.
-
-**When Scopus behaves strangely, run `diagnose_connection` first.** It checks
-config presence, reachability of `api.elsevier.com`, metadata entitlement, and
-search entitlement, then tells you which of those is actually broken. It
-reports only whether credentials are *present*, never their values.
-
-### Three remedies
-
-1.  **Connect your institution's VPN.** This puts your requests inside the
-    subscribing IP range and needs no configuration change.
-2.  **Set an institutional token (`insttoken`).** Ask your library's Scopus
-    administrator, or Elsevier support via
-    [dev.elsevier.com](https://dev.elsevier.com/), for a token linked to your
-    API key; the token is tied to the library's subscription. It works from
-    any network, which makes it the best option if you travel.
-3.  **Proxy only Elsevier traffic through an on-campus host (`SCOPUS_PROXY`).**
-    If you can SSH to a machine on the institutional network, and your
-    institution permits it, open a SOCKS tunnel and point the server at it.
-    Only `api.elsevier.com` requests use the proxy; OpenAlex, Crossref and
-    Unpaywall calls go direct. `ssh` is built into macOS, Linux and
-    Windows 10+:
-
-    ```bash
-    ssh -N -D 1080 you@host.your-university.edu
-    ```
-
-    then set `"SCOPUS_PROXY": "socks5h://127.0.0.1:1080"` in the server's `env`
-    block (`socks5h` resolves DNS through the tunnel too).
-
-`diagnose_connection` reports which route is entitling you
-(`entitlement_via`: `insttoken`, `proxy` or `network_ip`) and, when search
-fails, tells you whether to suspect the network, the proxy's exit IP, or a
-token that is not associated with your API key.
-
-### Store secrets in the OS secret store
-
-Elsevier requires an insttoken to be kept in a password-protected
-environment, and the Claude Desktop config file is plain text. The server
-therefore also reads both secrets from the OS secret store, under service
-`scopus-mcp` with account `insttoken` or `api_key`. Lookup order is
-environment variable, then secret store, then `config.json`.
-
-**macOS (Keychain).** `-w` given last with no value prompts for the secret,
-keeping it out of shell history:
+macOS Keychain (`-w` given last prompts for the value, keeping it out of shell
+history):
 
 ```bash
 security add-generic-password -U -s scopus-mcp -a insttoken -w
 ```
 
-**Windows (Credential Manager).** `keyring` is installed with the server on
-Windows; the command prompts for the secret:
+Windows Credential Manager (`keyring` is installed with the server on
+Windows; the command prompts for the value):
 
 ```powershell
 uvx --from keyring keyring set scopus-mcp insttoken
 ```
 
-**Linux (Secret Service).** Needs a desktop session with GNOME Keyring or
-KWallet. Install the server with the `keyring` extra (`uvx --from
-"scopus-mcp[keyring]" scopus-mcp`), then store the secret with the same
-`keyring set` command as on Windows.
+Linux needs a desktop session with GNOME Keyring or KWallet, the server
+installed with the `keyring` extra, and the same `keyring set` command.
 
-Repeat with account `api_key` to move the API key out of the config file too,
-then remove the values from the `env` block. Restart the MCP client afterwards:
-the server reads secrets once, at startup. `diagnose_connection` shows where
-each secret came from (`insttoken_source`: `env`, `keychain`, `keyring` or
-`config`), never the values.
+Restart the client afterwards; secrets are read once at startup.
+`diagnose_connection` shows where each came from, never the value.
 
-Alternatively, set the token in the `env` block of your Claude Desktop config
-(`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS,
-`%APPDATA%\Claude\claude_desktop_config.json` on Windows):
+## Access off campus
 
-```json
-{
-  "mcpServers": {
-    "scopus-assistant": {
-      "command": "uvx",
-      "args": [
-        "scopus-mcp"
-      ],
-      "env": {
-        "SCOPUS_API_KEY": "PUT_YOUR_KEY_HERE",
-        "SCOPUS_INSTTOKEN": "PUT_YOUR_INSTTOKEN_HERE"
-      }
-    }
-  }
-}
-```
+Your API key identifies you; your institution's subscription entitles you.
+Elsevier recognizes the subscription by the institution's IP range or by an
+institutional token. Off campus without either, ID-based metadata keeps
+working, while search, citations, references and full text fail. Search fails
+misleadingly: every query, even `ALL(gene)`, returns
+`400 "Error translating query"`, which reads like a syntax error.
 
-At startup the server logs where the token came from and whether a proxy is
-set (never the values), so you can confirm the config took effect.
+**Run `diagnose_connection` first when Scopus misbehaves.** It checks
+reachability, metadata, search, reference-list (REF view), full-text and
+journal-metrics access, and lists the tools that cannot work with your current
+access.
 
-### Flaky networks
+Ways to get subscriber access off campus:
 
-On hotel and train Wi-Fi, requests to `api.elsevier.com` stall or time out.
-The server retries transient transport failures (connect/read timeouts,
-connection errors, HTTP 429 and 5xx) with exponential backoff and full jitter,
-honoring a `Retry-After` header on 429. Deterministic 4xx responses are never
-retried. Set `SCOPUS_MAX_RETRIES` to change the retry count (default `2`, i.e.
-3 attempts total); `0` disables retries entirely.
+1. **Institutional VPN.** No configuration needed.
+2. **Institutional token** (`SCOPUS_INSTTOKEN`), requested through your
+   library or Elsevier support and linked to your API key. Works from any
+   network.
+3. **SOCKS tunnel to an on-campus host**, where your institution permits it.
+   Only Elsevier traffic uses it:
+
+   ```bash
+   ssh -N -D 1080 you@host.your-university.edu
+   ```
+
+   then set `SCOPUS_PROXY` to `socks5h://127.0.0.1:1080`.
+
+Without any of these, use `source="openalex"`.
 
 ## Development
 
-Run the offline test suite with:
 ```bash
 uv run --extra dev pytest
 ```
-CI runs it on Linux, macOS and Windows. Tests never touch your real secret
-store; the Windows Credential Manager round-trip test runs only on Windows.
 
-## License
+The offline suite mocks every network call; CI runs it on Linux, macOS and
+Windows. Tests never read your real secret store. Tests marked `integration`
+call the live APIs and run only with `pytest -m integration`.
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+Mocked tests prove logic, not the live API's shape: search paging, the
+tool-return size limit, the REF-view parser and reference-list paging all
+passed mocks and failed live. Smoke-test every new tool against the real API before trusting it.
 
-## Acknowledgments & Contributors
+## Origins and credits
 
-<a href="https://github.com/qwe4559999/scopus-mcp/graphs/contributors">
-  <img alt="contributors" src="https://contrib.rocks/image?repo=qwe4559999/scopus-mcp" />
-</a>
+This project began as a fork of
+[qwe4559999/scopus-mcp](https://github.com/qwe4559999/scopus-mcp) by
+[thinktraveller](https://github.com/thinktraveller) (initial work) and
+[qwe4559999](https://github.com/qwe4559999) (maintainer) with contributors,
+which provides
+Scopus search, abstracts, author profiles and citing papers. Everything from
+version 0.2 on — reference retrieval, the network and lineage tools, full
+text, OpenAlex, diagnostics and off-campus access — was developed here by
+[Michal Hron](https://github.com/michalhron). Fixes suitable for upstream are
+offered there as pull requests.
 
-*   **[thinktraveller](https://github.com/thinktraveller)** - *Initial Work & Core Development*
-*   **[qwe4559999](https://github.com/qwe4559999)** - *Maintainer*
+MIT licensed; see [LICENSE](LICENSE).

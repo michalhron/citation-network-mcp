@@ -10,6 +10,8 @@ import httpx
 
 from scopus_mcp.client import ScopusClient, CANARY_SCOPUS_ID
 
+from tests.diag_fakes import capability_ok
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -64,7 +66,10 @@ def _diagnose(client, request_side_effect):
 
 def _abstract_then_search(abstract_result, search_result):
     """Side-effect fn: first canary abstract call, then canary search call."""
-    def side_effect(method, endpoint, *args, **kwargs):
+    def side_effect(method, endpoint, params=None, *args, **kwargs):
+        capability = capability_ok(endpoint, params)
+        if capability is not None:
+            return capability
         outcome = abstract_result if CANARY_SCOPUS_ID in endpoint else search_result
         if isinstance(outcome, Exception):
             raise outcome
@@ -168,4 +173,92 @@ def test_degraded_verdict_appended_on_slow_connect():
     verdict = ScopusClient._build_verdict(report)
     assert verdict.startswith('Connection and entitlement healthy.')
     assert 'degraded' in verdict
+    _run(client.close())
+
+
+# ---------------------------------------------------------------------------
+# Per-API capabilities (REF view, full text, Serial Title)
+# ---------------------------------------------------------------------------
+
+REF_401_MSG = (
+    "REF-view fetch failed: Invalid API Key — likely a REF-view entitlement "
+    "or quota limit, not a bad key (key works for other endpoints)."
+)
+
+
+def _capabilities(overrides):
+    """Side effect: core checks ok; capability endpoints from `overrides`
+    keyed 'references' / 'fulltext' / 'serial_title', else entitled."""
+    def side_effect(method, endpoint, params=None, *args, **kwargs):
+        if params and params.get('view') == 'REF':
+            key = 'references'
+        elif endpoint.startswith('content/article/'):
+            key = 'fulltext'
+        elif endpoint.startswith('content/serial/'):
+            key = 'serial_title'
+        else:
+            return {'ok': True}
+        outcome = overrides.get(key, capability_ok(endpoint, params))
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+    return side_effect
+
+
+def test_all_capabilities_ok():
+    client = _make_client()
+    report = _diagnose(client, _capabilities({}))
+    assert {k: v['status'] for k, v in report['capabilities'].items()} == {
+        'references': 'ok', 'fulltext': 'ok', 'serial_title': 'ok'}
+    assert report['unavailable_tools'] == []
+    assert report['verdict'] == 'Connection and entitlement healthy.'
+    _run(client.close())
+
+
+def test_ref_view_refused_lists_network_tools():
+    client = _make_client()
+    report = _diagnose(client, _capabilities({'references': Exception(REF_401_MSG)}))
+    assert report['capabilities']['references']['status'] == 'entitlement_missing'
+    assert 'get_references' in report['unavailable_tools']
+    assert 'bibliographic_coupling' in report['unavailable_tools']
+    assert 'search_scopus' not in report['unavailable_tools']
+    assert report['verdict'] == (
+        'Search works, but not every API is entitled: references unavailable.')
+    _run(client.close())
+
+
+def test_fulltext_abstract_only_when_text_short():
+    client = _make_client()
+    short = {'full-text-retrieval-response': {'originalText': 'Abstract only.'}}
+    report = _diagnose(client, _capabilities({'fulltext': short}))
+    fulltext = report['capabilities']['fulltext']
+    assert fulltext['status'] == 'abstract_only'
+    assert fulltext['chars'] == len('Abstract only.')
+    assert any(t.startswith('get_fulltext') for t in report['unavailable_tools'])
+    _run(client.close())
+
+
+def test_fulltext_refused_is_entitlement_missing():
+    client = _make_client()
+    err = Exception('Scopus API error 403 for x (query=None): AUTHORIZATION_ERROR')
+    report = _diagnose(client, _capabilities({'fulltext': err}))
+    assert report['capabilities']['fulltext']['status'] == 'entitlement_missing'
+    _run(client.close())
+
+
+def test_serial_title_empty_entry():
+    client = _make_client()
+    report = _diagnose(client, _capabilities(
+        {'serial_title': {'serial-metadata-response': {'entry': []}}}))
+    assert report['capabilities']['serial_title']['status'] == 'empty'
+    assert 'serial_title' in report['verdict']
+    _run(client.close())
+
+
+def test_off_network_lists_search_tools_unavailable():
+    client = _make_client()
+    report = _diagnose(client, _abstract_then_search(
+        {'ok': True}, Exception(ENTITLEMENT_400_MSG)))
+    for tool in ('search_scopus', 'search_all', 'get_citing_papers', 'co_citation'):
+        assert tool in report['unavailable_tools']
     _run(client.close())

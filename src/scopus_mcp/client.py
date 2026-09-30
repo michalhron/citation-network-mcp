@@ -37,6 +37,24 @@ ENTITLEMENT_NOTE = (
     "the request lacks subscriber entitlement. Off-network access requires "
     "the institutional VPN, SCOPUS_PROXY, or SCOPUS_INSTTOKEN."
 )
+# Once a known-good query has worked in this session, "Error translating
+# query" means the query itself: an unsupported field or operator.
+QUERY_SYNTAX_NOTE = (
+    " Search entitlement works (a known-good query succeeds), so the query "
+    "itself failed to translate: check field names and operators. Common "
+    "causes: year fields take an operator, not parentheses (REFPUBYEAR IS "
+    "1997, PUBYEAR > 2010; REFPUBYEAR(1997) fails); REFAUTH takes a surname "
+    "(REFAUTH(swanson)); quotes must be straight double quotes."
+)
+# Elsevier's refusal of individual search fields (REFEID, for example) for
+# keys without the matching entitlement. Different from the above: the
+# rest of the search language still works.
+FIELD_RESTRICTION_TEXT = "field restrictions"
+FIELD_RESTRICTION_NOTE = (
+    " This key may not use one of the query's search fields (Elsevier "
+    "reserves some, such as REFEID, for particular entitlements). Rewrite "
+    "without it: REF(2-s2.0-<id>) finds the papers citing a record."
+)
 INSTTOKEN_NOTE = (
     " An insttoken is configured: Elsevier also rejects requests whose "
     "insttoken is revoked or not associated with this API key, so the "
@@ -128,6 +146,10 @@ class ScopusClient:
             proxy=self.proxy,
         )
         self.quota_info = {} # Store latest quota headers
+        # Result of the known-good query run after an "Error translating
+        # query" 400: True/False once known, None before (or while probing).
+        self._search_entitled: Optional[bool] = None
+        self._probing_search = False
 
     async def close(self):
         """Closes the underlying HTTP client."""
@@ -264,11 +286,40 @@ class ScopusClient:
                         f"(query={q!r}): {body}"
                     )
                     if status == 400 and self._is_entitlement_400(e.response):
-                        msg += ENTITLEMENT_NOTE
+                        msg += await self._translation_note()
+                    elif FIELD_RESTRICTION_TEXT in body.lower():
+                        msg += FIELD_RESTRICTION_NOTE
                     raise Exception(msg) from e
             except ValueError:
                 logger.error("Failed to parse JSON response")
                 raise Exception("Invalid JSON response from Scopus API")
+
+    async def _translation_note(self) -> str:
+        """Which note an "Error translating query" 400 deserves.
+
+        Elsevier returns that 400 both for malformed queries and for every
+        query from an unentitled key, so one known-good query decides:
+        it succeeds -> the query is at fault; it fails the same way -> no
+        search entitlement (VPN, proxy or insttoken advice). Probed once
+        per session; a failed probe of another kind keeps the old note.
+        """
+        if self._search_entitled is None and not self._probing_search:
+            self._probing_search = True
+            try:
+                await self._request(
+                    'GET', 'content/search/scopus',
+                    {'query': CANARY_QUERY, 'count': 1, 'field': 'dc:identifier'},
+                    use_cache=False,
+                )
+                self._search_entitled = True
+            except Exception as exc:
+                if ENTITLEMENT_400_STATUS_TEXT in str(exc):
+                    self._search_entitled = False
+            finally:
+                self._probing_search = False
+        if self._search_entitled:
+            return QUERY_SYNTAX_NOTE
+        return ENTITLEMENT_NOTE
 
     @staticmethod
     def _is_entitlement_400(response: httpx.Response) -> bool:

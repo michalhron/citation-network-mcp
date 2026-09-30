@@ -5,6 +5,48 @@ are pushed yet (see "Release process" in ROADMAP.md).
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-09-30
+
+### Added
+- `citation_network`: the direct-citation network within a set of papers
+  (IDs or a query) in one call, with SPC main path (local and global),
+  key-route main paths (Liu & Lu 2012) and a completeness flag per paper.
+  Writes the corpus JSON, a Pajek `.net` (Pajek, VOSviewer, Gephi) and an
+  edge CSV; edges come back inline too. Replaces one `get_references` call
+  per paper.
+- `resolve_citers`: citers of one or more seeds by several strategies at
+  once (REF() per seed plus any extra queries), merged and verified against
+  each hit's own reference list; reports what each strategy found and
+  missed, and the hits that cite no seed.
+- `citation_context`: the sentences in which one paper cites another, with
+  Semantic Scholar's intent labels and influential-citation flag. Falls back
+  to the cited paper's citation list when the publisher has Semantic Scholar
+  withhold the citing paper's references (Wiley, Taylor & Francis).
+- `get_references`: `filter_ids` returns only the references to papers in a
+  given list; `check_completeness` compares the list with the reference
+  count the publisher deposited at Crossref.
+- `scope` on `search_all`, `citation_lineage` (forward), `citation_network`
+  and `resolve_citers`: an ISSN list or `basket_of_eight` / `ais8`. ISSNs
+  rather than journal names, which Scopus spells inconsistently.
+- `search_all` `inline='compact'` returns every record as one JSON line of
+  key fields, for callers that cannot read the server's files (cloud
+  sessions); `inline='full'` returns them in full. Records carry `issn`.
+- `citation_lineage` also writes a Pajek `.net` with SPC-weighted arcs.
+
+### Fixed
+- `get_references` no longer truncates silently: every reply states how many
+  references were returned of how many, whether the list was cut, and when
+  Scopus reports more references than it serves.
+- "Error translating query" no longer always blames entitlement. One
+  known-good query decides: if it works, the note points at the query
+  (`REFPUBYEAR(1997)` must be `REFPUBYEAR IS 1997`); if not, the VPN,
+  proxy and insttoken advice follows. "Field restrictions not allowed" gets
+  its own note (use `REF(2-s2.0-<id>)` instead of `REFEID`).
+- Main-path analysis dropped every paper on a citation cycle. Cycles are now
+  broken by removing the edge that runs most against publication order,
+  using each paper's earliest known date (online-first before issue date),
+  and the removed edges are reported.
+
 ## [0.16.0] - 2026-09-30
 
 ### Changed

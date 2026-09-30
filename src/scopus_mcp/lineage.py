@@ -4,6 +4,7 @@ import logging
 import math
 from collections import deque
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .graphs import _make_node_label
@@ -125,17 +126,11 @@ def compute_main_path(records: List[Dict[str, Any]]) -> Dict[str, Any]:
                 if parent not in pred[child]:
                     pred[child].append(parent)
 
-    # Kahn's topological sort (cycle-safe — nodes in cycles are silently excluded)
-    in_degree = {k: len(pred[k]) for k in node_map}
-    queue: deque = deque([k for k in node_map if in_degree[k] == 0])
-    topo: List[str] = []
-    while queue:
-        node = queue.popleft()
-        topo.append(node)
-        for v in succ[node]:
-            in_degree[v] -= 1
-            if in_degree[v] == 0:
-                queue.append(v)
+    # Citation cycles (mutual citation, online-first papers cited before
+    # their issue date) are broken edge by edge, dropping the edge that runs
+    # most against publication order, so no paper leaves the network.
+    removed = _break_cycles(node_map, succ, pred)
+    topo = _topo_order(node_map, succ, pred)
 
     topo_set = set(topo)
 
@@ -242,8 +237,165 @@ def compute_main_path(records: List[Dict[str, Any]]) -> Dict[str, Any]:
         'edges': edge_weights,
         'main_path': greedy_path,
         'global_main_path': global_path,
-        'note': None,
+        'removed_cycle_edges': removed,
+        'note': (f"Removed {len(removed)} edge(s) to break citation cycles; "
+                 "see removed_cycle_edges.") if removed else None,
     }
+
+
+def earliest_date(r: Dict[str, Any]) -> str:
+    """Earliest known date of a record as 'YYYY-MM-DD' ('' when unknown).
+
+    Online-first papers carry an issue (cover) date later than the date
+    they became citable; the earliest known date orders them correctly.
+    """
+    dates = []
+    for field in ('online_date', 'publication_date', 'cover_date'):
+        v = r.get(field)
+        if v and str(v)[:4].isdigit():
+            dates.append(str(v)[:10])
+    y = str(r.get('year') or '')[:4]
+    if y.isdigit():
+        dates.append(f'{y}-12-31')  # year only: latest day, so real dates win
+    return min(dates) if dates else ''
+
+
+def _topo_order(node_map, succ, pred) -> List[str]:
+    """Kahn's topological order; nodes on cycles are left out."""
+    in_degree = {k: len(pred[k]) for k in node_map}
+    queue: deque = deque([k for k in node_map if in_degree[k] == 0])
+    topo: List[str] = []
+    while queue:
+        node = queue.popleft()
+        topo.append(node)
+        for v in succ[node]:
+            in_degree[v] -= 1
+            if in_degree[v] == 0:
+                queue.append(v)
+    return topo
+
+
+def _break_cycles(node_map, succ, pred) -> List[Dict[str, Any]]:
+    """Remove edges until the graph is acyclic; return the removed edges.
+
+    Each round finds a cycle among the nodes Kahn's sort cannot order and
+    drops, from that cycle, the edge whose cited paper (parent) is dated
+    latest relative to its citing paper (child): the edge most at odds
+    with publication order. Ties go to the lexically last edge, so the
+    result is deterministic.
+    """
+    removed: List[Dict[str, Any]] = []
+    while True:
+        ordered = set(_topo_order(node_map, succ, pred))
+        stuck = [k for k in node_map if k not in ordered]
+        if not stuck:
+            return removed
+        cycle = _find_cycle(stuck, succ, set(stuck))
+        if not cycle:
+            return removed
+
+        def lateness(edge):
+            u, v = edge
+            return (earliest_date(node_map[u]) or '9999') > (earliest_date(node_map[v]) or '9999'), \
+                earliest_date(node_map[u]), edge
+        u, v = max(zip(cycle, cycle[1:] + cycle[:1]), key=lateness)
+        succ[u].remove(v)
+        pred[v].remove(u)
+        removed.append({'source': u, 'target': v,
+                        'source_date': earliest_date(node_map[u]) or None,
+                        'target_date': earliest_date(node_map[v]) or None})
+
+
+def _find_cycle(nodes: List[str], succ, allowed: set) -> List[str]:
+    """One directed cycle among `allowed` nodes, as a node list."""
+    color: Dict[str, int] = {}
+    for start in nodes:
+        if color.get(start):
+            continue
+        stack = [(start, iter(succ[start]))]
+        path = [start]
+        on_path = {start: 0}
+        color[start] = 1
+        while stack:
+            node, it = stack[-1]
+            nxt = next((v for v in it if v in allowed), None)
+            if nxt is None:
+                stack.pop()
+                path.pop()
+                on_path.pop(node, None)
+                color[node] = 2
+                continue
+            if nxt in on_path:
+                return path[on_path[nxt]:]
+            if not color.get(nxt):
+                color[nxt] = 1
+                on_path[nxt] = len(path)
+                path.append(nxt)
+                stack.append((nxt, iter(succ[nxt])))
+    return []
+
+
+def key_route_paths(edges: List[Dict[str, Any]], k: int = 10) -> Dict[str, Any]:
+    """Key-route main paths (Liu & Lu 2012) from SPC-weighted edges.
+
+    The k highest-SPC edges are each extended backward to a source and
+    forward to a sink, always along the heaviest adjoining edge; the union
+    of these routes is returned. Unlike a single main path it keeps
+    parallel streams of a literature visible.
+    """
+    if not edges or k <= 0:
+        return {'k': k, 'routes': [], 'nodes': [], 'edges': []}
+    succ: Dict[str, List[tuple]] = {}
+    pred: Dict[str, List[tuple]] = {}
+    for e in edges:
+        succ.setdefault(e['source'], []).append((e['spc_weight'], e['target']))
+        pred.setdefault(e['target'], []).append((e['spc_weight'], e['source']))
+    key_edges = sorted(edges, key=lambda e: (-e['spc_weight'], e['source'], e['target']))[:k]
+    routes, route_edges, route_nodes = [], [], []
+    for e in key_edges:
+        back = [e['source']]
+        while pred.get(back[0]):
+            prev = max(pred[back[0]])[1]
+            if prev in back:
+                break
+            back.insert(0, prev)
+        fwd = [e['target']]
+        while succ.get(fwd[-1]):
+            nxt = max(succ[fwd[-1]])[1]
+            if nxt in fwd or nxt in back:
+                break
+            fwd.append(nxt)
+        route = back + fwd
+        same = next((r for r in routes if r['path'] == route), None)
+        if same:  # several key edges often extend to the same route
+            same['key_edges'].append([e['source'], e['target']])
+            continue
+        routes.append({'key_edges': [[e['source'], e['target']]],
+                       'spc_weight': e['spc_weight'], 'path': route})
+        for a, b in zip(route, route[1:]):
+            if [a, b] not in route_edges:
+                route_edges.append([a, b])
+        route_nodes.extend(n for n in route if n not in route_nodes)
+    return {'k': k, 'routes': routes, 'nodes': route_nodes, 'edges': route_edges}
+
+
+def write_pajek(nodes: List[Dict[str, Any]], edges: List[Dict[str, Any]], path) -> str:
+    """Pajek .net (arcs, optional weights) for Pajek, VOSviewer and Gephi.
+
+    nodes: [{'id', 'label'?}], edges: [{'source', 'target', 'weight'?}].
+    """
+    index = {n['id']: i for i, n in enumerate(nodes, start=1)}
+    lines = [f'*Vertices {len(nodes)}']
+    for n in nodes:
+        label = str(n.get('label') or n['id']).replace('"', "'")
+        lines.append(f'{index[n["id"]]} "{label}"')
+    lines.append('*Arcs')
+    for e in edges:
+        if e['source'] in index and e['target'] in index:
+            w = e.get('weight')
+            lines.append(f'{index[e["source"]]} {index[e["target"]]}' + (f' {w}' if w is not None else ''))
+    Path(path).write_text('\n'.join(lines) + '\n', encoding='utf-8')
+    return str(path)
 
 
 _D3_HTML_TEMPLATE = r"""<!DOCTYPE html>

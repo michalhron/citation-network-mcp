@@ -413,7 +413,7 @@ def test_find_by_title_prefers_longest_reference_list():
 
 def test_scopus_seed_without_doi_resolves_by_title():
     m = _oa_mock()
-    m.find_by_title = AsyncMock(return_value=_work('W5', title='Conf Paper'))
+    m.find_by_title = AsyncMock(return_value=_work('W5', title='Conf Paper', refs=['W6']))
     m.references = AsyncMock(return_value=[_work('W6', title='Ref')])
     scopus = MagicMock()
     scopus.get_abstract = AsyncMock(return_value={'abstracts-retrieval-response': {

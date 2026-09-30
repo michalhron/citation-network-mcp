@@ -108,8 +108,34 @@ Every new tool gets a live smoke test before it is trusted (see Lessons).
 
 - [x] Repository, package, extension, plugin and registry entry renamed;
       `citation-network-mcp` and `scopus-mcp` commands kept as aliases.
-- [ ] PyPI pending publisher for `scopus-plus-mcp` (Michal), then tag v0.16.0.
+- [x] PyPI pending publisher for `scopus-plus-mcp` (Michal), then tag v0.16.0.
 - [ ] Switch Claude Desktop to `uvx scopus-plus-mcp@latest` after release.
+
+## Network audit (0.17.0, 2026-09-30)
+
+From a full organizing-vision network build (105 papers, Basket of Eight),
+run from a cloud session.
+
+- [x] `get_references` states returned/available/truncated; `filter_ids`;
+      Crossref completeness check.
+- [x] "Error translating query": a known-good query decides between a bad
+      query and missing entitlement; field-restriction errors get their own note.
+- [x] `search_all` `inline='compact'|'full'` for callers without file access;
+      `scope` (ISSN list or `basket_of_eight`) on `search_all` and
+      `citation_lineage`.
+- [x] `citation_network`: within-set network, main path, key routes,
+      completeness flags, Pajek export (one call instead of 105).
+- [x] `resolve_citers`: several strategies merged and verified against
+      each hit's reference list.
+- [x] `citation_context`: Semantic Scholar contexts, intents, influence.
+- [x] Citation cycles broken against publication order (earliest known
+      date) instead of silently dropping papers from the main path.
+- [ ] OpenCitations as a third reference count / edge cross-check.
+- [ ] Retraction flags (Crossref's Retraction Watch data).
+- [ ] Zotero: push a corpus into a collection (needs the user's Zotero key).
+- [ ] Contexts for every edge of a `citation_network` (one S2 request per
+      cited paper; worth it once a free S2 key is configured).
+- [ ] Emit ISSN clauses in the litbaskets skill (skill-side, not in this repo).
 
 ## Phase 3 — Research pipeline
 

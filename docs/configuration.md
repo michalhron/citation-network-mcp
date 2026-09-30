@@ -16,7 +16,11 @@ sits between the two.
 | `SEMANTIC_SCHOLAR_API_KEY` | `semantic_scholar_api_key` | — | Optional; raises Semantic Scholar's rate limit for open-access lookups and `citation_context`. |
 | `SCOPUS_MCP_OUTPUT_DIR` | — | `~/scopus-mcp-output` | Where result, graph, BibTeX and full-text files go. |
 | `SCOPUS_PAGE_SIZE` | `page_size` | `25` | Records per Scopus request in `search_all` (1–200). |
-| `SCOPUS_MAX_RETRIES` | `max_retries` | `2` | Retries for timeouts, 429 and 5xx; `0` disables. |
+| `SCOPUS_MAX_RETRIES` | `max_retries` | `2` | Retries for timeouts and 5xx; `0` disables. |
+| `SCOPUS_RATE_LIMIT_RETRIES` | `rate_limit_retries` | `5` | Retries after 429 (rate limited): `Retry-After` or `X-RateLimit-Reset` when sent, else backoff with jitter, 30 to 60 s in all. A spent quota fails at once. |
+| `SCOPUS_SYNC_BUDGET` | — | `45` | Seconds a long tool (`citation_network`, `resolve_citers`, lineage, coupling) runs before it returns a job ID and continues in the background (`job_status`, `job_result`). Keep it under your client's timeout (Claude Desktop: 60 s). |
+| `SCOPUS_COMPLETENESS_RATIO` | — | `0.9` | A reference list is SHORT below this share of the comparison count... |
+| `SCOPUS_COMPLETENESS_MIN_MISSING` | — | `5` | ...and with at least this many references missing (both must hold). |
 | `CACHE_TTL_SEARCH` | `cache_ttl_search` | `3600` | Search cache lifetime, seconds. |
 | `CACHE_TTL_ABSTRACT` | `cache_ttl_abstract` | `2592000` | Abstract and reference cache lifetime. |
 | `CACHE_TTL_AUTHOR` | `cache_ttl_author` | `604800` | Author cache lifetime. |

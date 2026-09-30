@@ -40,6 +40,8 @@ def _fake_ref_view(total, page=40, empty_after=None):
     calls = []
 
     def side_effect(method, endpoint, params=None, **kwargs):
+        if params.get('view') == 'FULL':
+            return {}  # no FULL-view bibliography: nothing to recover
         start = int(params.get('startref', 1))
         if 'refcount' in params:
             # The live API 400s when refcount runs past the end of the list.
@@ -127,6 +129,8 @@ def test_phantom_last_reference_is_skipped_after_one_retry():
     seen = []
 
     def side_effect(method, endpoint, params=None, **kwargs):
+        if params.get('view') == 'FULL':
+            return {}  # no FULL-view bibliography: nothing to recover
         seen.append(dict(params))
         start = int(params.get('startref', 1))
         count = int(params.get('refcount', 40))
@@ -146,6 +150,8 @@ def test_range_error_twice_is_raised():
     client = _make_client()
 
     def side_effect(method, endpoint, params=None, **kwargs):
+        if params.get('view') == 'FULL':
+            return {}  # no FULL-view bibliography: nothing to recover
         if 'startref' in params:
             raise RANGE_400
         return _page(1, 40, 172)
@@ -164,6 +170,8 @@ def test_other_errors_are_not_swallowed():
     client = _make_client()
 
     def side_effect(method, endpoint, params=None, **kwargs):
+        if params.get('view') == 'FULL':
+            return {}  # no FULL-view bibliography: nothing to recover
         if 'startref' in params:
             raise Exception('Scopus API server error 503 for x after 3 attempt(s)')
         return _page(1, 40, 172)
@@ -183,6 +191,8 @@ def test_last_page_requests_only_the_remainder():
     seen = []
 
     def side_effect(method, endpoint, params=None, **kwargs):
+        if params.get('view') == 'FULL':
+            return {}  # no FULL-view bibliography: nothing to recover
         seen.append(dict(params))
         start = int(params.get('startref', 1))
         return _page(start, int(params.get('refcount', 40)), 172)

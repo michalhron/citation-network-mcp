@@ -222,8 +222,11 @@ def test_ref_view_refused_lists_network_tools():
     assert 'get_references' in report['unavailable_tools']
     assert 'bibliographic_coupling' in report['unavailable_tools']
     assert 'search_scopus' not in report['unavailable_tools']
-    assert report['verdict'] == (
+    assert report['verdict'].startswith(
         'Search works, but not every API is entitled: references unavailable.')
+    # P3: off-network REF refusal names the fix, including an insttoken.
+    assert 'off the institutional network' in report['verdict']
+    assert 'SCOPUS_INSTTOKEN' in report['verdict']
     _run(client.close())
 
 

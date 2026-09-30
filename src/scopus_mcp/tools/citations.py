@@ -1,7 +1,7 @@
 """Backward and forward citations of one document."""
 import mcp.types as types
 
-from ..completeness import assess, crossref_reference_counts
+from ..completeness import RULE_TEXT, assess, external_reference_counts
 from ..openalex import bare_doi, clean_openalex_work, short_id
 from ..records import (
     clean_abstract_details,
@@ -142,17 +142,18 @@ def _reference_header(shown, available, reported, count, filtered, n_filter):
 
 async def _completeness_line(doi, retrieved):
     if not doi:
-        return "Completeness: unknown (the document has no DOI to check at Crossref)."
-    counts = await crossref_reference_counts([doi])
-    cr = counts.get(doi.lower())
-    verdict = assess(retrieved, cr)
+        return "Completeness: unknown (the document has no DOI to look up a comparison count)."
+    counts = await external_reference_counts([doi], openalex=server_module().openalex)
+    ext, src = counts.get(doi.lower(), (None, None))
+    verdict = assess(retrieved, ext)
     if verdict == 'unknown':
-        return "Completeness: unknown (the publisher deposited no reference count at Crossref)."
+        return ("Completeness: unknown (no reference count at Crossref, OpenAlex or "
+                "Semantic Scholar).")
     if verdict == 'short':
-        return (f"Completeness: SHORT. Crossref lists {cr} references; this "
-                f"list has {retrieved}. Edges from this paper will be missing "
-                "in a citation network; cross-check with source='openalex'.")
-    return f"Completeness: ok (Crossref lists {cr} references)."
+        return (f"Completeness: SHORT. {src} lists {ext} references; this list has "
+                f"{retrieved} ({RULE_TEXT}). Edges from this paper will be missing in "
+                "a citation network; cross-check with source='openalex'.")
+    return f"Completeness: ok ({src} lists {ext} references)."
 
 
 async def _get_references(arguments: dict) -> list:

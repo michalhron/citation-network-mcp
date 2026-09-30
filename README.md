@@ -30,7 +30,7 @@ server, so any MCP client can use it: Claude Desktop, Claude Code, Cursor.
   and see how often and where each one uses it.
 - 🩺 **Honest about access.** One call tells you which tools your current
   Scopus access supports, and why the rest fail.
-- ✅ **Tested.** 443 test functions, CI on Linux, macOS and Windows, and a
+- ✅ **Tested.** 468 test functions, CI on Linux, macOS and Windows, and a
   live check of every tool against the real APIs.
 
 How it compares with the other Scopus MCP servers: **[comparison](docs/comparison.md)**.
@@ -56,7 +56,7 @@ How it compares with the other Scopus MCP servers: **[comparison](docs/compariso
 | **Networks** | `bibliographic_coupling` · `co_citation` · `citation_lineage` · `citation_network` |
 | **Audit** | `resolve_citers` · `citation_context` |
 | **Bibliometrics** | `publication_counts` · `topic_landscape` · `get_journal_metrics` · `find_journals` · `get_bibtex` |
-| **Diagnostics** | `diagnose_connection` · `get_quota_status` · `get_server_info` |
+| **Diagnostics and jobs** | `diagnose_connection` · `get_quota_status` · `get_server_info` · `job_status` · `job_result` |
 
 Parameters and details for each: [tool reference](docs/tools.md).
 

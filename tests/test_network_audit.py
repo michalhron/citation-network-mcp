@@ -63,7 +63,8 @@ def _search_response(entries):
 
 def test_scope_basket_names_and_issn_lists():
     ais8 = resolve_scope('ais8')
-    assert '0276-7783' in ais8 and '1557-928X' in ais8 and len(ais8) == 15
+    assert '0276-7783' in ais8 and '1557-928X' in ais8 and len(ais8) == 16
+    assert '1558-3457' in ais8  # JAIS's second ISSN in Scopus
     assert resolve_scope('Basket of Eight') == ais8
     assert resolve_scope(['02767783', '1047-7047']) == ['0276-7783', '1047-7047']
     assert resolve_scope('0276-7783, 1047-7047') == ['0276-7783', '1047-7047']
@@ -173,10 +174,10 @@ def test_get_references_flags_short_list():
     m = _scopus_with_refs({'9': [(str(i), None) for i in range(32)]})
     m.get_abstract = AsyncMock(return_value={'abstracts-retrieval-response': {
         'coredata': {'prism:doi': '10.1/miranda'}}})
-    with patch('scopus_mcp.tools.citations.crossref_reference_counts',
-               new=AsyncMock(return_value={'10.1/miranda': 95})):
+    with patch('scopus_mcp.tools.citations.external_reference_counts',
+               new=AsyncMock(return_value={'10.1/miranda': (95, 'crossref')})):
         text = _call('get_references', {'scopus_id': '9', 'check_completeness': True}, m)
-    assert 'Completeness: SHORT. Crossref lists 95 references; this list has 32.' in text
+    assert 'Completeness: SHORT. crossref lists 95 references; this list has 32' in text
 
 
 def test_assess_thresholds():
@@ -265,12 +266,14 @@ def test_citation_network_scopus_ids(tmp_path):
             '3': [('2', None), ('777', '10.1/A')]}  # cites 1 by DOI only
     client.get_references = AsyncMock(side_effect=lambda sid: _ref_response(refs[sid]))
     with patch.dict(os.environ, {'SCOPUS_MCP_OUTPUT_DIR': str(tmp_path)}), \
-         patch('scopus_mcp.tools.corpus.crossref_reference_counts',
-               new=AsyncMock(return_value={'10.1/a': 1, '10.1/b': 2, '10.1/c': 40})):
+         patch('scopus_mcp.tools.corpus.external_reference_counts',
+               new=AsyncMock(return_value={'10.1/a': (1, 'crossref'), '10.1/b': (2, 'crossref'),
+                                           '10.1/c': (40, 'openalex')})):
         text = _call('citation_network', {'ids': ['1', '2-s2.0-2', '3']}, client)
     assert 'Citation network (scopus): 3 papers, 3 within-set citation edges, 0 papers with no edge.' in text
-    assert 'Completeness vs Crossref: 1 short, 2 ok, 0 unknown.' in text
-    assert 'SHORT 3 Wang 2010: 2 references retrieved, Crossref lists 40.' in text
+    assert ': 1 short, 2 ok, 0 unknown. Comparison counts from crossref 2, openalex 1.' in text
+    assert 'SHORT 3 Wang 2010: 2 references retrieved, openalex lists 40.' in text
+    assert 'Main path: 3 papers, 2 ok, 1 short, 0 unknown.' in text
     assert 'Main path (global): Swanson 1997 → Ramiller 2003 → Wang 2010' in text
     assert '3 2 ' in text and '2 1 ' in text
     query = client.search_all.await_args.args[0]
@@ -310,11 +313,13 @@ def test_resolve_citers_merges_strategies_and_verifies(tmp_path):
         text = _call('resolve_citers', {'seed_ids': ['31512927'],
                                         'queries': ['REFTITLE("organizing vision")']}, client)
     assert '4 distinct hits across 2 strategies' in text
-    assert 'REF(2-s2.0-31512927): 2 hits, 2 confirmed; misses 1 confirmed citers' in text
-    assert 'REFTITLE("organizing vision"): 3 hits, 2 confirmed; misses 1 confirmed citers' in text
-    assert 'Confirmed (cite at least one seed' in text and ': 3. Unconfirmed: 1' in text
+    assert '  REF(2-s2.0-31512927) | 2 | 2 | 0 | 0 | 1' in text
+    assert '  REFTITLE("organizing vision") | 3 | 2 | 1 | 0 | 1' in text
+    assert "seed is in the hit's own reference list): 3. Unconfirmed: 1" in text
     rows = [json.loads(ln) for ln in text.splitlines() if ln.startswith('{')]
-    assert {r['id']: r['verified'] for r in rows} == {'10': True, '11': True, '12': True, '13': False}
+    assert {r['id']: r['status'] for r in rows} == {
+        '10': 'confirmed', '11': 'confirmed', '12': 'confirmed', '13': 'unconfirmed'}
+    assert rows[2]['cites'] == ['31512927']
 
 
 # ── citation_context ─────────────────────────────────────────────────────
@@ -329,45 +334,55 @@ def _s2_transport(handler):
     return patch.object(s2.httpx, 'AsyncClient', side_effect=factory)
 
 
+def _s2_papers(papers):
+    """Handler piece: DOI lookups for {doi: paperId}."""
+    def lookup(path):
+        for doi, pid in papers.items():
+            if path.endswith(f'DOI:{doi}'):
+                return httpx.Response(200, json={'paperId': pid, 'title': pid, 'year': 2010,
+                                                 'authors': [{'name': 'Peiyu Wang'}]})
+        return None
+    return lookup
+
+
 def test_contexts_fall_back_to_cited_paper_when_references_are_elided():
+    lookup = _s2_papers({'10.1/km': 'KM', '10.2/wang': 'WANG'})
+
     def handler(request):
         path = request.url.path
-        if path.endswith('/references'):
+        found = lookup(path)
+        if found:
+            return found
+        if path.endswith('KM/references'):
             return httpx.Response(200, json={'data': None, 'citingPaperInfo': {}})
-        assert path.endswith('DOI:10.2/wang/citations')
+        assert path.endswith('WANG/citations')
         return httpx.Response(200, json={'data': [
-            {'citingPaper': {'title': 'Other', 'externalIds': {'DOI': '10.9/x'}},
-             'contexts': ['x'], 'intents': []},
-            {'citingPaper': {'title': 'Digital innovation', 'externalIds': {'DOI': '10.1/KM'}},
-             'contexts': ['fashions (Wang, 2010)'], 'intents': ['background'],
-             'isInfluential': False},
+            {'citingPaper': {'paperId': 'OTHER'}, 'contexts': ['x'], 'intents': []},
+            {'citingPaper': {'paperId': 'KM'},
+             'contexts': ['inoculation against following IT fashions (Wang, 2010).'],
+             'intents': ['background'], 'isInfluential': False},
         ]})
     with _s2_transport(handler):
-        out = _run(s2.citation_contexts([{'citing_doi': '10.1/km', 'cited_doi': '10.2/wang'}]))
+        out = _run(s2.citation_contexts([{'citing_ident': {'doi': '10.1/km'},
+                                          'cited_ident': {'doi': '10.2/wang'}}]))
     ctx = out[0]['context']
     assert ctx['status'] == 'found' and ctx['via'] == 'cited paper citations'
-    assert ctx['intents'] == ['background'] and ctx['contexts'] == ['fashions (Wang, 2010)']
-
-
-def test_contexts_from_citing_references_match_by_title():
-    def handler(request):
-        assert request.url.path.endswith('DOI:10.1/km/references')
-        return httpx.Response(200, json={'data': [
-            {'citedPaper': {'title': 'Chasing the Hottest IT', 'externalIds': {}},
-             'contexts': ['c'], 'intents': ['methodology'], 'isInfluential': True}]})
-    with _s2_transport(handler):
-        out = _run(s2.citation_contexts([{'citing_doi': '10.1/km', 'cited_doi': None,
-                                          'cited_title': 'Chasing the hottest IT'}]))
-    assert out[0]['context']['is_influential'] is True
-    assert out[0]['context']['via'] == 'citing paper references'
+    assert ctx['intents'] == ['background']
+    assert ctx['contexts'] == ['inoculation against following IT fashions (Wang, 2010).']
+    assert ctx['citing_route'] == 'doi' and ctx['cited_route'] == 'doi'
 
 
 def test_citation_context_tool_formats_pairs():
+    async def fake(pairs, terms, max_contexts):
+        return [dict(p, context={'status': 'found', 'intents': ['background'],
+                                 'is_influential': False, 'n_contexts': 1, 'n_contexts_total': 2,
+                                 'contexts': ['as argued (Wang, 2010)'], 'via': 'cited paper citations',
+                                 'citing_route': 'doi', 'cited_route': 'title_match'})
+                for p in pairs]
     oa = MagicMock()
-    with patch('scopus_mcp.tools.corpus.citation_contexts', new=AsyncMock(side_effect=lambda pairs: [
-            dict(p, context={'status': 'found', 'intents': ['background'], 'is_influential': False,
-                             'n_contexts': 1, 'contexts': ['as argued (Wang, 2010)'],
-                             'via': 'cited paper citations'}) for p in pairs])):
+    oa.get_work = AsyncMock(return_value=None)
+    with patch('scopus_mcp.tools.corpus.citation_contexts', new=fake):
         text = _call('citation_context', {'citing': '10.1/km', 'cited': '10.2/wang'}, openalex_mock=oa)
     assert '10.1/km → 10.2/wang: found; intents: background; influential: false' in text
+    assert '[resolved: citing by doi, cited by title_match]' in text
     assert '“as argued (Wang, 2010)”' in text

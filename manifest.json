@@ -2,7 +2,7 @@
   "manifest_version": "0.4",
   "name": "scopus-plus-mcp",
   "display_name": "Scopus Plus MCP",
-  "version": "0.17.0",
+  "version": "0.17.1",
   "description": "Scopus and more: search, full text, citation networks, journal quality and bibliometrics; OpenAlex without a subscription.",
   "long_description": "Search Scopus and ScienceDirect full text, trace citation lineages, map coupling and co-citation networks, scope reviews by field and journal quartile, and get counts, metrics and BibTeX. OpenAlex covers the same analyses without a Scopus subscription. Not affiliated with Elsevier.",
   "author": {
@@ -132,6 +132,14 @@
     {
       "name": "get_server_info",
       "description": "Return the server version and a health summary."
+    },
+    {
+      "name": "job_status",
+      "description": "State of a background job started by a long tool call (citation_network, resolve_citers, ...) that passed the sync budget: running, finished or failed, and its last step."
+    },
+    {
+      "name": "job_result",
+      "description": "Output of a finished background job (its status if still running)."
     }
   ],
   "keywords": [

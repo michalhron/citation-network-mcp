@@ -253,6 +253,23 @@ def get_page_size() -> int:
     return max(1, min(size, MAX_PAGE_SIZE))
 
 
+def get_rate_limit_retries() -> int:
+    """
+    Retries after HTTP 429 (rate limited), separate from the transient-error
+    budget: 'SCOPUS_RATE_LIMIT_RETRIES' or config.json 'rate_limit_retries'.
+    Defaults to 5 (about 30 to 60 seconds of backoff); 0 disables them.
+    """
+    raw = os.getenv('SCOPUS_RATE_LIMIT_RETRIES')
+    if raw is None:
+        raw = load_config_file().get('rate_limit_retries')
+    if raw is None:
+        return 5
+    try:
+        return max(0, int(raw))
+    except (TypeError, ValueError):
+        return 5
+
+
 def get_max_retries() -> int:
     """
     Retrieves the maximum retry count for transient request failures:

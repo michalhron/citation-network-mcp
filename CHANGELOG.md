@@ -5,6 +5,92 @@ are pushed yet (see "Release process" in ROADMAP.md).
 
 ## [Unreleased]
 
+## [0.17.1] - 2026-09-30
+
+Fixes from the 0.17.0 field test (organizing-vision network, Basket of
+Eight). Numbers refer to the field-test report. The full run now completes
+without workarounds: `resolve_citers` (2 seeds, phrase query, scope, verify)
+in about 50 s, `citation_network` on the 113 confirmed papers in about 30 s,
+`citation_context` on the 9 main-path edges in about 30 s. The global main
+path is unchanged: Swanson 1997, Ramiller 2003, Swanson 2004, Ramiller 2008,
+Baskerville 2009, Wang 2010, Kohli 2019, Wang 2021, Miranda 2022, Swanson 2025.
+
+### Fixed
+- **1.** `'list' object has no attribute 'lower'` crashed `resolve_citers`
+  (verify) and `citation_network` on Flynn 2012, Hoefnagel 2014, Lyytinen
+  2015 and Mamonov 2021. Where Scopus merges duplicate references it sends
+  `ce:doi` as a list of `{'$': doi}` nodes. Every reference field now goes
+  through one normalizer (`records.scalar`); the four REF-view responses are
+  test fixtures.
+- **2.** One bad paper no longer aborts a batch. Load failures go to
+  `reference_fetch_errors`, parse failures to `paper_errors` (ID, exception
+  type, message), both listed at the top of the reply; `resolve_citers`
+  reports `verification_failed` hits separately, never as confirmed or
+  unconfirmed.
+- **3.** 429s have their own retry budget (`SCOPUS_RATE_LIMIT_RETRIES`,
+  default 5, about 30 to 60 s) honouring `Retry-After` and
+  `X-RateLimit-Reset`; a spent quota fails at once. Papers still
+  rate-limited get a final sequential pass; if any list is still missing the
+  reply says `PROVISIONAL: main path computed with N of M reference lists
+  missing`. Empty quota headers read "quota headers not returned".
+- **4.** `refs_retrieved` was one less than `refs_reported` for nearly every
+  paper. Not our paging: the Scopus REF view never serves the last
+  reference (startref is 1-based; asking for entry N of N is a 400). The
+  missing tail now comes from the FULL view's bibliography (108 references
+  recovered in the 113-paper network), marked `recovered_from: FULL`;
+  anything still unavailable is counted as `refs_unparseable`. This also
+  confirms more citers: "Swanson" sorts late, so the dropped last reference
+  was often the seed (REF(1997): 104 of 105 confirmed, was 101 of 104).
+- **5.** Completeness falls back from Crossref to OpenAlex
+  `referenced_works_count` and Semantic Scholar `referenceCount`, with
+  `completeness_source` per paper (unknown: 4 of 113, was 51 of 111). The
+  SHORT rule is explicit and configurable (below 90% of the comparison count
+  and at least 5 missing; `SCOPUS_COMPLETENESS_RATIO`,
+  `SCOPUS_COMPLETENESS_MIN_MISSING`). Main-path papers get their own line.
+- **6.** `resolve_citers` `cross_check` (on when scoped) asks OpenAlex and
+  Semantic Scholar for in-scope citers and lists those Scopus misses, with
+  Scopus's reference count against the external one, grouped by cause: in
+  Scopus but missed by the searches (Miranda 2015: Scopus holds 32 of ~86
+  references), not in Scopus, and OpenAlex-only records without DOI (often
+  conference papers OpenAlex files under the journal). Never merged into the
+  Scopus result.
+- **7.** `citation_context` resolves papers by DOI, MAG ID, then title and
+  year, and reports the route. Swanson & Ramiller 2004 (JSTOR DOI) sits in
+  Semantic Scholar under an ACM DOI and is now found by title. `not_found` is
+  split into `citing_paper_unresolved`, `cited_paper_unresolved`,
+  `edge_absent_in_s2` and `contexts_withheld`; DOI and Scopus-ID inputs give
+  the same answer.
+- Basket of Eight: JAIS records in Scopus carry either 1536-9323 or
+  1558-3457; the second was missing from the basket.
+
+### Added
+- **8.** Long calls (`citation_network`, `resolve_citers`, lineage,
+  coupling, co-citation) return a job ID after `SCOPUS_SYNC_BUDGET` seconds
+  (default 45) and keep running; new tools `job_status` and `job_result`.
+  Responses are cached as they arrive, so a timed-out call resumes.
+- **9.** `citation_network` `inline='nodes'`: one compact line per paper
+  plus the edges (under 25k characters for 150 papers); `inline='full'` is
+  paged (`page`, `page_size`). `resolve_citers` compact lines are shorter
+  and include the seeds found in each hit's references.
+- **10.** Key-route line: "top 10 SPC edges extend into 5 distinct routes
+  (15 papers, 18 edges)".
+- **11.** `citation_context` `max_contexts` (default 3) and
+  `construct_terms`; contexts are cleaned of running headers and
+  citation-free text and ranked (naming the cited authors or the construct
+  first).
+- **12.** `resolve_citers` per-strategy table: hits, confirmed, unconfirmed,
+  verification failed, confirmed citers missed.
+- **13.** `citation_network` lists `possible_duplicates` (same DOI, or same
+  normalized title and year).
+
+### P3, carried over from the pre-0.17 test
+- Already fixed in 0.17.0: `get_references` truncation flag and totals;
+  `search_all` `inline='compact'|'full'`; "Error translating query" told
+  apart from missing entitlement.
+- Fixed now: an unauthorized REF view says you are probably off the
+  institutional network and names `SCOPUS_INSTTOKEN`; `diagnose_connection`
+  recommends the token when reference lists are unavailable.
+
 ## [0.17.0] - 2026-09-30
 
 ### Added

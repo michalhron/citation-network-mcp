@@ -5,7 +5,7 @@ import math
 import random
 import time
 import httpx
-from typing import Optional, Dict, Any
+from typing import Any, Dict, List, Optional
 from urllib.parse import urljoin
 
 from . import USER_AGENT
@@ -13,6 +13,7 @@ from .config import (
     get_api_key,
     get_cache_config,
     get_max_retries,
+    get_rate_limit_retries,
     get_page_size,
     get_proxy,
     proxy_scheme,
@@ -61,6 +62,9 @@ INSTTOKEN_NOTE = (
     "token may be the cause rather than the key."
 )
 
+# Longest single wait after a 429.
+RATE_LIMIT_MAX_DELAY = 30.0
+
 # Transport failures worth retrying; other request errors are deterministic.
 RETRYABLE_TRANSPORT_ERRORS = (
     httpx.ConnectTimeout,
@@ -107,6 +111,34 @@ CAPABILITY_TOOLS = {
     'serial_title': ['get_journal_metrics (Scopus)', 'find_journals', 'topic_landscape'],
 }
 
+def bibliography_to_ref(entry: Dict[str, Any]) -> Dict[str, Any]:
+    """A FULL-view bibliography entry in the REF view's shape, so one parser
+    handles both. Marked '@recovered': 'FULL'."""
+    info = entry.get('ref-info') or {}
+    ids = ((info.get('refd-itemidlist') or {}).get('itemid')) or []
+    if isinstance(ids, dict):
+        ids = [ids]
+    by_type = {}
+    for i in ids:
+        if isinstance(i, dict) and i.get('$'):
+            by_type.setdefault(i.get('@idtype'), i['$'])
+    year = ((info.get('ref-publicationyear') or {}).get('@first'))
+    authors = ((info.get('ref-authors') or {}).get('author')) or []
+    if isinstance(authors, dict):
+        authors = [authors]
+    title = info.get('ref-title')
+    return {
+        '@id': entry.get('@id'),
+        'title': title.get('ref-titletext') if isinstance(title, dict) else title,
+        'sourcetitle': info.get('ref-sourcetitle'),
+        'scopus-id': by_type.get('SGR'),
+        'ce:doi': by_type.get('DOI'),
+        'prism:coverDate': f'{year}-01-01' if year else None,
+        'author-list': {'author': [a for a in authors if isinstance(a, dict)]},
+        '@recovered': 'FULL',
+    }
+
+
 class ScopusClient:
     """
     Async client for interacting with the Elsevier Scopus API.
@@ -123,6 +155,7 @@ class ScopusClient:
         # machine borrows an institutional IP without a full VPN.
         self.proxy = get_proxy()
         self.max_retries = get_max_retries()
+        self.rate_limit_retries = get_rate_limit_retries()
         self.headers = {
             'X-ELS-APIKey': self.api_key,
             'Accept': 'application/json',
@@ -181,6 +214,7 @@ class ScopusClient:
 
         can_retry = idempotent
         attempt = 1
+        rate_retries = 0
         max_attempts = (1 + self.max_retries) if can_retry else 1
         request_kwargs: Dict[str, Any] = {'params': params}
         if json_body is not None:
@@ -211,12 +245,32 @@ class ScopusClient:
             self._update_quota_info(response.headers)
 
             status = response.status_code
-            if status == 429 or 500 <= status < 600:
+            if status == 429:
+                # Rate limits get their own, longer budget: a throttled
+                # reference list must not silently drop out of a network.
+                quota = self._quota_snapshot(response.headers)
+                exhausted = self._quota_exhausted(response.headers)
+                if can_retry and not exhausted and rate_retries < self.rate_limit_retries:
+                    rate_retries += 1
+                    delay = self._rate_limit_delay(response.headers, rate_retries)
+                    logger.info(
+                        f"Rate limited on {endpoint} (retry {rate_retries}/"
+                        f"{self.rate_limit_retries}); sleeping {delay:.1f}s"
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+                if exhausted:
+                    raise Exception(
+                        "Scopus API quota exhausted (429, X-RateLimit-Remaining 0). "
+                        f"Quota headers: {quota}"
+                    )
+                raise Exception(
+                    f"Rate limit exceeded (429) after {rate_retries} retries. "
+                    f"Quota headers: {quota}"
+                )
+            if 500 <= status < 600:
                 if attempt < max_attempts:
-                    if status == 429:
-                        delay = self._retry_after_delay(response.headers) or self._backoff_delay(attempt)
-                    else:
-                        delay = self._backoff_delay(attempt)
+                    delay = self._backoff_delay(attempt)
                     logger.info(
                         f"Retrying {endpoint} (attempt {attempt + 1}/{max_attempts}) "
                         f"after HTTP {status}; sleeping {delay:.1f}s"
@@ -224,13 +278,6 @@ class ScopusClient:
                     await asyncio.sleep(delay)
                     attempt += 1
                     continue
-                if status == 429:
-                    quota_snap = {k: response.headers.get(k, '') for k in (
-                        'X-RateLimit-Remaining', 'X-RateLimit-Reset', 'X-ELS-Status')}
-                    raise Exception(
-                        f"Rate limit exceeded (429) after retries. "
-                        f"Quota headers: {quota_snap}"
-                    )
                 raise Exception(
                     f"Scopus API server error {status} for {endpoint} "
                     f"after {attempt} attempt(s)"
@@ -257,9 +304,12 @@ class ScopusClient:
                     quota_str = ', '.join(f'{k}={v}' for k, v in quota_snap.items() if v)
                     if is_ref:
                         msg = (
-                            "REF-view fetch failed: Invalid API Key — likely a "
-                            "REF-view entitlement or quota limit, not a bad key "
-                            "(key works for other endpoints)."
+                            "REF-view fetch failed: not authorized for reference "
+                            "lists. Reference lists are entitled by network IP, so "
+                            "this usually means you are off the institutional "
+                            "network: connect the VPN, or set SCOPUS_INSTTOKEN, "
+                            "which works from anywhere. (Less often: a quota limit; "
+                            "the key itself works for other endpoints.)"
                         )
                     else:
                         msg = "Authentication failed: Invalid API Key"
@@ -340,14 +390,51 @@ class ScopusClient:
 
     @staticmethod
     def _retry_after_delay(headers: httpx.Headers) -> Optional[float]:
-        """Parses a numeric Retry-After header, capped at 10 s."""
+        """Parses a numeric Retry-After header, capped at RATE_LIMIT_MAX_DELAY."""
         raw = headers.get('Retry-After')
         if raw is None:
             return None
         try:
-            return min(max(float(raw), 0.0), 10.0)
+            return min(max(float(raw), 0.0), RATE_LIMIT_MAX_DELAY)
         except (TypeError, ValueError):
             return None
+
+    def _rate_limit_delay(self, headers: httpx.Headers, retry: int) -> float:
+        """Retry-After, else X-RateLimit-Reset (epoch seconds) when it is
+        near, else exponential backoff with jitter: 2, 4, 8, 16, 30 s at
+        most, so five retries span 30 to 60 seconds."""
+        delay = self._retry_after_delay(headers)
+        if delay is not None:
+            return delay
+        reset = headers.get('X-RateLimit-Reset')
+        if reset:
+            try:
+                wait = float(reset) - time.time()
+                if 0 < wait <= RATE_LIMIT_MAX_DELAY:
+                    return wait + random.uniform(0, 1)
+            except (TypeError, ValueError):
+                pass
+        return min(RATE_LIMIT_MAX_DELAY, 2.0 ** retry) * random.uniform(0.5, 1.0)
+
+    @staticmethod
+    def _quota_exhausted(headers: httpx.Headers) -> bool:
+        """True for a spent quota (Remaining 0 and the reset not imminent),
+        where retrying cannot help; False for ordinary throttling."""
+        if headers.get('X-RateLimit-Remaining') != '0':
+            return False
+        try:
+            return float(headers.get('X-RateLimit-Reset')) - time.time() > 2 * RATE_LIMIT_MAX_DELAY
+        except (TypeError, ValueError):
+            return True
+
+    @staticmethod
+    def _quota_snapshot(headers: httpx.Headers) -> str:
+        """Quota headers as text, or a plain statement that there were none
+        (Elsevier often sends none with a 429)."""
+        snap = {k: headers.get(k) for k in (
+            'X-RateLimit-Remaining', 'X-RateLimit-Reset', 'X-ELS-Status')}
+        present = {k: v for k, v in snap.items() if v}
+        return str(present) if present else 'quota headers not returned'
 
     def _update_quota_info(self, headers: httpx.Headers):
         """Updates internal quota state from response headers."""
@@ -501,8 +588,32 @@ class ScopusClient:
                 break
             refs.extend(more)
             pages += 1
+        reported = int(refs_block.get('@total-references') or 0)
+        if len(refs) < reported:
+            # The REF view never serves the last reference of a list
+            # (@total-references 73: startref 73 is a 400), so nearly every
+            # list came back one short. The FULL view's bibliography holds
+            # all of them; take the missing tail from there.
+            refs.extend(await self._bibliography_tail(endpoint, len(refs), ttl))
         refs_block['reference'] = refs
+        refs_block['@unservable'] = max(0, reported - len(refs))
         return data
+
+    async def _bibliography_tail(self, endpoint: str, have: int, ttl) -> List[Dict[str, Any]]:
+        """References after position `have`, from the FULL view's
+        bibliography, reshaped like REF-view entries. [] when the FULL
+        view is unavailable (it needs the same subscriber entitlement)."""
+        try:
+            full = await self._request('GET', endpoint, {'view': 'FULL'}, ttl=ttl)
+        except Exception as exc:
+            logger.info(f"FULL-view bibliography unavailable for {endpoint}: {exc}")
+            return []
+        bib = ((((full.get('abstracts-retrieval-response') or {}).get('item') or {})
+                .get('bibrecord') or {}).get('tail') or {}).get('bibliography') or {}
+        entries = bib.get('reference') or []
+        if isinstance(entries, dict):
+            entries = [entries]
+        return [bibliography_to_ref(e) for e in entries[have:] if isinstance(e, dict)]
 
     async def yearly_counts(self, query: str, from_year: int, to_year: int) -> Dict[int, int]:
         """
@@ -1025,6 +1136,13 @@ class ScopusClient:
                     "Search works, but not every API is entitled: "
                     f"{', '.join(limited)} unavailable."
                 )
+                if 'references' in limited and not config.get('insttoken_present'):
+                    verdict += (
+                        " Reference lists are entitled by network IP only, so you "
+                        "are probably off the institutional network. Connect the "
+                        "VPN, or set SCOPUS_INSTTOKEN (an institutional token from "
+                        "your library or Elsevier support) to use them from anywhere."
+                    )
         elif not reachability['reachable'] or search == 'network':
             verdict = "api.elsevier.com is not reachable; check your network connection."
         else:

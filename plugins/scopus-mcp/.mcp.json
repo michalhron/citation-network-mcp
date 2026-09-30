@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "scopus": {
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/michalhron/scopus-mcp.git", "scopus-mcp"]
+    }
+  }
+}

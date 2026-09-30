@@ -59,7 +59,21 @@ logger = logging.getLogger("scopus-mcp")
 SERVER_VERSION = __version__
 
 # Initialize Server
-server = Server("scopus-mcp")
+SERVER_INSTRUCTIONS = (
+    "Literature and citation-network tools over Scopus (default) or OpenAlex "
+    "(source='openalex'). When a Scopus call fails, especially with 'Error "
+    "translating query', run diagnose_connection: it names the tools the "
+    "current access cannot use. Without Scopus subscriber access, pass "
+    "source='openalex'. Keep one source per analysis: IDs and citation graphs "
+    "differ between them. Large results are written to files; report the paths."
+)
+
+server = Server(
+    "scopus-mcp",
+    version=__version__,
+    instructions=SERVER_INSTRUCTIONS,
+    website_url="https://github.com/michalhron/scopus-mcp",
+)
 client = ScopusClient()
 # OpenAlex backend: the same analyses without Scopus subscriber entitlement.
 openalex = OpenAlexClient()

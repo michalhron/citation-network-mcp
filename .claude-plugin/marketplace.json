@@ -1,0 +1,17 @@
+{
+  "name": "michalhron",
+  "owner": {
+    "name": "Michal Hron",
+    "url": "https://github.com/michalhron"
+  },
+  "metadata": {
+    "description": "Research tools by Michal Hron"
+  },
+  "plugins": [
+    {
+      "name": "scopus-mcp",
+      "source": "./plugins/scopus-mcp",
+      "description": "Citation-network analysis on Scopus or OpenAlex: search, citations, coupling, co-citation, lineages, bibliometrics"
+    }
+  ]
+}

@@ -1,0 +1,161 @@
+{
+  "manifest_version": "0.4",
+  "name": "scopus-mcp",
+  "display_name": "Scopus MCP",
+  "version": "0.10.0",
+  "description": "Citation-network analysis on Scopus or OpenAlex: search, citations, coupling, co-citation, lineages, bibliometrics.",
+  "long_description": "Search the literature, trace who cites whom across generations, map research fronts and intellectual bases, and get publication counts, journal metrics and BibTeX. Scopus by default; OpenAlex needs no subscription.",
+  "author": {
+    "name": "Michal Hron",
+    "url": "https://github.com/michalhron"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/michalhron/scopus-mcp"
+  },
+  "homepage": "https://github.com/michalhron/scopus-mcp",
+  "documentation": "https://github.com/michalhron/scopus-mcp#readme",
+  "support": "https://github.com/michalhron/scopus-mcp/issues",
+  "icon": "assets/icon.png",
+  "server": {
+    "type": "uv",
+    "entry_point": "src/scopus_mcp/server.py",
+    "mcp_config": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--directory",
+        "${__dirname}",
+        "scopus-mcp"
+      ],
+      "env": {
+        "SCOPUS_API_KEY": "${user_config.scopus_api_key}",
+        "SCOPUS_INSTTOKEN": "${user_config.insttoken}",
+        "OPENALEX_API_KEY": "${user_config.openalex_api_key}",
+        "SCOPUS_MCP_OUTPUT_DIR": "${user_config.output_directory}"
+      }
+    }
+  },
+  "tools": [
+    {
+      "name": "search_scopus",
+      "description": "Search for documents in Scopus using a query string."
+    },
+    {
+      "name": "get_abstract_details",
+      "description": "Retrieve full details for a specific document by Scopus ID."
+    },
+    {
+      "name": "get_author_profile",
+      "description": "Retrieve an author's profile by Author ID."
+    },
+    {
+      "name": "get_citing_papers",
+      "description": "Retrieve a list of papers that have cited the specified document (Forward Citations)."
+    },
+    {
+      "name": "diagnose_connection",
+      "description": "Diagnose Scopus connectivity and entitlement."
+    },
+    {
+      "name": "get_quota_status",
+      "description": "Get the current API quota status (remaining/limit)."
+    },
+    {
+      "name": "resolve_identifier",
+      "description": "Resolve any document identifier (Scopus ID, EID, DOI, or PII) to the full cross-reference set (scopus_id, eid, doi, pii, title)."
+    },
+    {
+      "name": "search_all",
+      "description": "Search Scopus (or OpenAlex with source='openalex') and page through results automatically, returning up to max_results entries in one call."
+    },
+    {
+      "name": "search_authors",
+      "description": "Find authors by name, optionally narrowed by affiliation."
+    },
+    {
+      "name": "get_journal_metrics",
+      "description": "Journal metrics for a list of journals, e.g."
+    },
+    {
+      "name": "get_bibtex",
+      "description": "BibTeX entries for a list of papers, written to a .bib file and returned inline."
+    },
+    {
+      "name": "publication_counts",
+      "description": "Count publications per year for a query, e.g."
+    },
+    {
+      "name": "bibliographic_coupling",
+      "description": "Build a bibliographic-coupling graph for a set of seed papers."
+    },
+    {
+      "name": "co_citation",
+      "description": "Build a co-citation graph for a set of seed papers."
+    },
+    {
+      "name": "get_references",
+      "description": "Retrieve the cited-reference list of a document (Backward Citations) via the Abstract Retrieval REF view."
+    },
+    {
+      "name": "get_fulltext",
+      "description": "Retrieve the full text of a paper via a provider waterfall: (1) ScienceDirect full text (requires SCOPUS_INSTTOKEN or institutional IP), (2) open-access copy via OpenAlex + direct fetch, (3) Scopus abstract fallback."
+    },
+    {
+      "name": "get_server_info",
+      "description": "Return the server version and a health summary."
+    },
+    {
+      "name": "citation_lineage",
+      "description": "Walk the citation lineage of a seed paper across multiple generations."
+    }
+  ],
+  "keywords": [
+    "scopus",
+    "openalex",
+    "bibliometrics",
+    "citation network",
+    "literature review"
+  ],
+  "license": "MIT",
+  "user_config": {
+    "scopus_api_key": {
+      "type": "string",
+      "title": "Scopus API key",
+      "description": "From dev.elsevier.com. Stored securely by Claude.",
+      "sensitive": true,
+      "required": true
+    },
+    "insttoken": {
+      "type": "string",
+      "title": "Institutional token (optional)",
+      "description": "Gives subscriber access off campus. Leave empty on your institution's network.",
+      "sensitive": true,
+      "required": false
+    },
+    "openalex_api_key": {
+      "type": "string",
+      "title": "OpenAlex API key (optional)",
+      "description": "Free key from openalex.org; raises the daily OpenAlex budget tenfold.",
+      "sensitive": true,
+      "required": false
+    },
+    "output_directory": {
+      "type": "directory",
+      "title": "Output folder",
+      "description": "Where result, network, BibTeX and full-text files are saved.",
+      "default": "${HOME}/scopus-mcp-output",
+      "required": false
+    }
+  },
+  "compatibility": {
+    "platforms": [
+      "darwin",
+      "win32",
+      "linux"
+    ],
+    "runtimes": {
+      "python": ">=3.10"
+    }
+  }
+}

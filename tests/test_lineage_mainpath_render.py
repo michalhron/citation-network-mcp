@@ -193,7 +193,7 @@ class TestRenderLineageHtml(unittest.TestCase):
 
     def test_render_failure_returns_none(self):
         """If output dir is unwriteable, render_lineage_html must return None, not raise."""
-        with patch('scopus_mcp.utils._output_dir', side_effect=OSError("disk full")):
+        with patch('scopus_mcp.lineage._output_dir', side_effect=OSError("disk full")):
             result = render_lineage_html(self._records(), [], 'seed1', 'test-lin')
         assert result is None
 
@@ -222,7 +222,7 @@ class TestRenderLineagePng(unittest.TestCase):
             assert Path(path).stat().st_size > 5000
 
     def test_render_failure_returns_none(self):
-        with patch('scopus_mcp.utils._output_dir', side_effect=OSError("disk full")):
+        with patch('scopus_mcp.lineage._output_dir', side_effect=OSError("disk full")):
             result = render_lineage_png(self._records(), [], 'seed1', 'test-lin')
         assert result is None
 

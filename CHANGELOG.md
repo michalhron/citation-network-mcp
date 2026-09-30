@@ -5,6 +5,13 @@ are pushed yet (see "Release process" in ROADMAP.md).
 
 ## [Unreleased]
 
+### Changed
+- `utils.py` (1,389 lines) split into `records.py`, `graphs.py`,
+  `lineage.py`, `output.py` and `oa_fulltext.py`; `utils.py` re-exports
+  every name, so existing imports keep working. No behaviour change.
+- Removed two unused imports (`re` in `client.py`, `matplotlib.cm` in the
+  lineage PNG renderer).
+
 ## [0.14.0] - 2026-09-30
 
 ### Changed

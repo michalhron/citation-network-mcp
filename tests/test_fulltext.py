@@ -167,8 +167,8 @@ def test_oa_pdf_path(tmp_path):
     with (
         patch.dict(os.environ, {'SCOPUS_API_KEY': 'dummy', 'SCOPUS_MCP_OUTPUT_DIR': str(tmp_path)}),
         patch('scopus_mcp.server.client') as mock_client,
-        patch('scopus_mcp.utils._extract_pdf_text', return_value=pdf_text),
-        patch('scopus_mcp.utils.httpx.AsyncClient', return_value=_make_fake_httpx_ctx(fake_get)),
+        patch('scopus_mcp.oa_fulltext._extract_pdf_text', return_value=pdf_text),
+        patch('scopus_mcp.oa_fulltext.httpx.AsyncClient', return_value=_make_fake_httpx_ctx(fake_get)),
     ):
         mock_client.get_sciencedirect_fulltext = AsyncMock(return_value=None)
 
@@ -195,8 +195,8 @@ def test_oa_html_path(tmp_path):
     with (
         patch.dict(os.environ, {'SCOPUS_API_KEY': 'dummy', 'SCOPUS_MCP_OUTPUT_DIR': str(tmp_path)}),
         patch('scopus_mcp.server.client') as mock_client,
-        patch('scopus_mcp.utils._extract_html_text', return_value=extracted),
-        patch('scopus_mcp.utils.httpx.AsyncClient', return_value=_make_fake_httpx_ctx(fake_get)),
+        patch('scopus_mcp.oa_fulltext._extract_html_text', return_value=extracted),
+        patch('scopus_mcp.oa_fulltext.httpx.AsyncClient', return_value=_make_fake_httpx_ctx(fake_get)),
     ):
         mock_client.get_sciencedirect_fulltext = AsyncMock(return_value=None)
 

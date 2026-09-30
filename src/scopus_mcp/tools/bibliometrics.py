@@ -7,7 +7,8 @@ import mcp.types as types
 from ..bibtex import generated_entry, make_keys_unique
 from ..journals import category_names, clean_openalex_source, clean_serial_entry, format_issn, normalize_issn, resolve_categories, serial_entry_issns, srcid_queries, subject_ranks, venue_type
 from ..openalex import clean_openalex_work, openalex_work_key
-from ..utils import _output_dir, clean_abstract_details, to_scopus_id
+from ..output import _output_dir
+from ..records import clean_abstract_details, to_scopus_id
 from .common import SOURCE_SCHEMA, _source, _write_rows_csv, server_module
 
 

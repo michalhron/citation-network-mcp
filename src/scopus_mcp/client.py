@@ -20,7 +20,7 @@ from .config import (
     resolve_insttoken,
 )
 from .cache import CacheManager
-from .utils import to_scopus_id, to_eid
+from .records import to_eid, to_scopus_id
 
 # Setup basic logging
 logging.basicConfig(level=logging.INFO)
@@ -346,7 +346,6 @@ class ScopusClient:
             except Exception as exc:
                 msg = str(exc)
                 # Extract ELS-Status from the error message if present
-                import re as _re
                 is_auth_error = any(s in msg for s in (
                     'AUTHORIZATION_ERROR', 'Authentication failed', 'not authorized',
                     '401', '403',

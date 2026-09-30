@@ -162,11 +162,13 @@ make one release that strengthens a methods section; 5–6 follow.
       the three weights. Organizing-vision network: the global path is the
       same under all three; the local backward path leaves it after Wang
       2010 (Nielsen 2014, Gal 2022).
-- [ ] **2. Thematic evolution** (bibliometrix). Term clusters per time
-      slice, and how they split, merge and drift between slices: the
-      corpus-level counterpart of the construct-shifted edge label (does
-      "organizing vision" dissolve into "IT fashion" or "institutional
-      logics"?). Medium.
+- [x] **2. Thematic evolution** (bibliometrix; 0.21.0 `thematic_evolution`).
+      Keyword co-occurrence themes per period in the strategic diagram,
+      flows between periods, and a followed construct. Organizing vision
+      (author keywords, cuts 2005 and 2013): a basic theme with IS/IT
+      innovation, then an emerging-or-declining theme with discourse and
+      ERP while management fashion is a motor theme, then a motor theme with
+      innovation and diffusion beside a new digital-transformation theme.
 - [x] **3. Reference Publication Year Spectroscopy** (metaknowledge,
       bibliometrix; 0.20.0 `rpys`). Organizing-vision citers: peaks at 1983
       (DiMaggio & Powell), 1991 (Abrahamson; Powell & DiMaggio), 1994

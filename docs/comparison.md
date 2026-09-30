@@ -43,10 +43,10 @@ Corrections are welcome as issues.
 | Institutional token | ✓ | — | ✓ | ✓ | — | — |
 | Access diagnostics | ✓ | — | ✓ | — | — | — |
 | Response cache and retries | ✓ | ✓ | ✓ | — | — | — |
-| Test functions | 487 | 5 | 10 | 0 | 156 | 6 |
+| Test functions | 493 | 5 | 10 | 0 | 156 | 6 |
 | CI on Linux, macOS and Windows | ✓ | — | — | — | — | — |
 | **Project** | | | | | | |
-| Tools | 30 | 5 | 25 | 13 | 12 | 6 |
+| Tools | 31 | 5 | 25 | 13 | 12 | 6 |
 | Commits | 120 | 45 | 5 | 7 | 12 | 6 |
 | Last commit | 2026-09 | 2026-05 | 2026-05 | 2026-06 | 2026-04 | 2026-05 |
 
@@ -118,7 +118,7 @@ version; — not supported. Corrections are welcome.
 | RPYS | ✓ | ✓ | — | ✓ | — | — | — |
 | Clustering into research fronts | — (planned) | ✓ | — | — | — | ✓ | ✓ |
 | **Content and science mapping** | | | | | | | |
-| Co-word, thematic maps, thematic evolution | — (planned) | ✓ | — | — | partly | partly | — |
+| Co-word, thematic maps, thematic evolution | ✓ | ✓ | — | — | partly | partly | — |
 | Topic models | — | ✓ | — | — | ✓ | — | — |
 | Co-authorship, institution, country networks | — | ✓ | — | ✓ | ✓ | ✓ | ✓ |
 | Lotka, Bradford, descriptive statistics | partly | ✓ | — | — | partly | — | — |
@@ -155,10 +155,10 @@ version; — not supported. Corrections are welcome.
 
 ### Where others lead
 
-- **Science mapping.** bibliometrix and VOSviewer cover co-word and thematic
-  maps, thematic evolution, clustering and collaboration networks; this
-  project has none of these yet (thematic evolution and research fronts are
-  on the roadmap).
+- **Science mapping.** bibliometrix and VOSviewer cover clustering and
+  collaboration networks and richer science maps; this project has thematic
+  maps and evolution but no clustering of the citation network yet (on the
+  roadmap) and no collaboration networks.
 - **Files and reproducibility.** The packages analyse saved exports, so an
   analysis can be rerun years later on the same records. This project works
   from live APIs; its cached responses and written corpus files are the

@@ -325,7 +325,7 @@ class OpenAlexClient:
         """Works that cite `work_id` (an OpenAlex W-id)."""
         return await self.list_works(_and(f'cites:{work_id}', extra_filter), max_results, sort)
 
-    async def works_by_ids(self, work_ids: List[str]) -> List[Dict[str, Any]]:
+    async def works_by_ids(self, work_ids: List[str], select: str = WORK_FIELDS) -> List[Dict[str, Any]]:
         """Hydrate W-ids in batches of ID_BATCH (1 credit per batch)."""
         found: Dict[str, Dict[str, Any]] = {}
         for i in range(0, len(work_ids), ID_BATCH):
@@ -333,7 +333,7 @@ class OpenAlexClient:
             data = await self._get('works', {
                 'filter': 'openalex:' + '|'.join(chunk),
                 'per-page': ID_BATCH,
-                'select': WORK_FIELDS,
+                'select': select,
             }) or {}
             for w in data.get('results') or []:
                 found[short_id(w.get('id'))] = w

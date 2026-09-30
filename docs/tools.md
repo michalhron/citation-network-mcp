@@ -267,6 +267,22 @@ Where and at what prestige a topic is published. Runs a Scopus query and reports
 | `sample` | `recent` \| `cited` \| `relevance` | recent | Which papers to analyse when the topic has more than max_papers: most recent, most cited (where influential work appears), or most relevant. |
 | `journals_only` | boolean | True | Count only journal papers in the quartiles; ranked conference proceedings and book series are reported separately. False counts every ranked venue. |
 
+### `thematic_evolution` · **OpenAlex**
+
+Themes of a corpus and how they change over time (Cobo et al. 2011; as in bibliometrix's thematic map and thematic evolution). Per period: keyword co-occurrence clusters, each placed in the strategic diagram by Callon centrality and density (motor, basic, niche, emerging or declining); between periods: which themes continue, split, merge, appear or vanish (inclusion index). With construct_terms it follows a construct through the periods: the theme that holds it, where that theme sits, and the keywords it keeps company with, i.e. whether the construct stays central, drifts or dissolves into another. Give ids or a query. Writes JSON, CSV and a PNG of the strategic diagrams. Cost: one abstract request per paper (cached).
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `ids` | list of string |  | The papers (Scopus IDs/EIDs; with source='openalex', DOIs or OpenAlex IDs). Use this or query. |
+| `query` | string |  | Search query defining the set, instead of ids. |
+| `max_results` | integer | 300 | With query: how many papers to include (default 300). |
+| `scope` |  |  | Restrict to journals, by ISSN: a list of ISSNs, or a basket name ('basket_of_eight' / 'ais8': the AIS Senior Scholars' Basket of Eight). ISSNs are used rather than journal names, which Scopus spells inconsistently. |
+| `cut_years` | list of integer |  | First years of the later periods, e.g. [2005, 2012] gives up to 2004, 2005-2011 and 2012 on. Default: n_periods of similar size. |
+| `n_periods` | integer | 3 | Periods of similar paper counts when cut_years is not given (default 3). |
+| `terms` | `author_keywords` \| `all_keywords` \| `title_abstract` | author_keywords | 'author_keywords' (default; papers without them fall back to Scopus index terms), 'all_keywords' (author keywords plus index terms), 'title_abstract' (phrases from title and abstract; for corpora with few keywords). With source='openalex', keywords are OpenAlex's own. |
+| `construct_terms` | list of string |  | A construct to follow, e.g. ['organizing vision']. |
+| `min_freq` | integer | 2 | Keywords must appear in at least this many papers of a period (default 2). |
+
 ### `get_journal_metrics` · **OpenAlex**
 
 Journal metrics for a list of journals, e.g. a litbaskets basket. Scopus (default): SJR, SNIP, CiteScore and CiteScore Tracker with their years, plus subject areas, from the Serial Title API. Give ISSNs, or Scopus source IDs (SRCIDs), which are mapped to ISSNs through one Scopus search each (needs search entitlement). source='openalex': OpenAlex's own measures (2-year mean citedness, h-index, i10-index), ISSNs only, no entitlement. Journals not found are listed, never dropped. Also written to CSV. At most 200 journals per call.

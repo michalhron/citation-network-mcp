@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 BASE_URL = "https://api.openalex.org/"
 WORK_FIELDS = (
     "id,doi,title,publication_year,publication_date,cited_by_count,type,"
-    "primary_location,authorships,referenced_works"
+    "primary_location,authorships,referenced_works,ids"
 )
 PER_PAGE = 200  # OpenAlex maximum
 ID_BATCH = 50   # IDs per `openalex:` filter request
@@ -339,6 +339,25 @@ class OpenAlexClient:
                 found[short_id(w.get('id'))] = w
         # Keep the caller's (reference-list) order; drop IDs OpenAlex lacks.
         return [found[w] for w in work_ids if w in found]
+
+    async def reference_counts(self, dois: List[str]) -> Dict[str, Optional[int]]:
+        """DOI (lower-case) -> referenced_works_count, ID_BATCH DOIs per
+        request (1 credit each). OpenAlex counts only references it matched
+        to a work, so the figure is a lower bound; 0 comes back as None."""
+        out: Dict[str, Optional[int]] = {}
+        dois = [d.lower() for d in dict.fromkeys(d for d in dois if d)]
+        for i in range(0, len(dois), ID_BATCH):
+            chunk = dois[i:i + ID_BATCH]
+            data = await self._get('works', {
+                'filter': 'doi:' + '|'.join(chunk),
+                'per-page': ID_BATCH,
+                'select': 'doi,referenced_works_count',
+            }) or {}
+            for w in data.get('results') or []:
+                doi = bare_doi(w.get('doi'))
+                if doi:
+                    out[doi.lower()] = w.get('referenced_works_count') or None
+        return out
 
     async def references(self, work: Dict[str, Any], limit: Optional[int] = None) -> List[Dict[str, Any]]:
         """Hydrated reference list of a raw work (from get_work)."""

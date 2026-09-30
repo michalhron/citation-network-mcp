@@ -14,7 +14,8 @@ BASKET_OF_EIGHT = {
     'European Journal of Information Systems': ['0960-085X', '1476-9344'],
     'Information Systems Journal': ['1350-1917', '1365-2575'],
     'Information Systems Research': ['1047-7047', '1526-5536'],
-    'Journal of the Association for Information Systems': ['1536-9323'],
+    # Scopus files JAIS records under either number, inconsistently.
+    'Journal of the Association for Information Systems': ['1536-9323', '1558-3457'],
     'Journal of Information Technology': ['0268-3962', '1466-4437'],
     'Journal of Management Information Systems': ['0742-1222', '1557-928X'],
     'Journal of Strategic Information Systems': ['0963-8687', '1873-1198'],

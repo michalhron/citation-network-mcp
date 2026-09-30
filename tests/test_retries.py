@@ -208,9 +208,9 @@ def test_429_honors_retry_after_capped():
 
 
 def test_retry_after_cap():
-    """Retry-After above 10 s is capped at 10 s."""
+    """Retry-After above 30 s is capped at 30 s."""
     client = _make_client()
-    assert client._retry_after_delay(httpx.Headers({'Retry-After': '120'})) == 10.0
+    assert client._retry_after_delay(httpx.Headers({'Retry-After': '120'})) == 30.0
     assert client._retry_after_delay(httpx.Headers({'Retry-After': '3'})) == 3.0
     assert client._retry_after_delay(httpx.Headers({})) is None
     _run(client.close())

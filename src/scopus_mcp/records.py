@@ -280,6 +280,28 @@ def clean_identifiers(data: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def scalar(value: Any) -> Optional[str]:
+    """One string from a Scopus JSON field that may arrive as a string, a
+    {'$': text} node, or a list of either.
+
+    Scopus returns lists where it merged duplicate records: a reference
+    cited twice can carry 'ce:doi': [{'$': '10.2307/249008'}, {'$':
+    '10.2307/249008'}]. The first non-empty value wins.
+    """
+    if value is None:
+        return None
+    if isinstance(value, list):
+        for v in value:
+            s = scalar(v)
+            if s:
+                return s
+        return None
+    if isinstance(value, dict):
+        return scalar(value.get('$'))
+    text = str(value).strip()
+    return text or None
+
+
 def reported_reference_total(data: Dict[str, Any]) -> Optional[int]:
     """'@total-references' of a REF-view response, or None."""
     root = data.get('abstracts-retrieval-response') or data.get('abstract-retrieval-response') or {}
@@ -323,8 +345,8 @@ def clean_references(data: Dict[str, Any], limit: Optional[int] = None) -> List[
             continue
 
         # Year from ISO cover date (e.g. "1996-01-01" → "1996")
-        cover = r.get('prism:coverDate') or ''
-        year = cover[:4] if cover else None
+        cover = scalar(r.get('prism:coverDate')) or ''
+        year = cover[:4] if cover[:4].isdigit() else None
 
         # Authors — deduplicate by @auid to collapse multi-affiliation entries
         raw_authors = r.get('author-list', {})
@@ -342,20 +364,24 @@ def clean_references(data: Dict[str, Any], limit: Optional[int] = None) -> List[
                 continue
             if auid:
                 seen_auids.add(auid)
-            name = a.get('ce:indexed-name') or a.get('ce:surname')
+            name = scalar(a.get('ce:indexed-name')) or scalar(a.get('ce:surname'))
             if name:
                 authors.append(name)
 
-        cleaned.append({
-            'position': r.get('@id'),
-            'title': r.get('title'),
+        doi = scalar(r.get('ce:doi'))
+        entry = {
+            'position': scalar(r.get('@id')),
+            'title': scalar(r.get('title')),
             'authors': authors,
-            'source': r.get('sourcetitle'),
+            'source': scalar(r.get('sourcetitle')),
             'year': year or None,
-            'scopus_id': r.get('scopus-id'),
-            'doi': r.get('ce:doi'),
+            'scopus_id': scalar(r.get('scopus-id')),
+            'doi': doi.lower() if doi else None,
             'fulltext': None,
-        })
+        }
+        if r.get('@recovered'):
+            entry['recovered_from'] = r['@recovered']
+        cleaned.append(entry)
 
     if limit is not None:
         return cleaned[:limit]

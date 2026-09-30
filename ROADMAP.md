@@ -137,6 +137,16 @@ run from a cloud session.
       cited paper; worth it once a free S2 key is configured).
 - [ ] Emit ISSN clauses in the litbaskets skill (skill-side, not in this repo).
 
+## Field-test fixes (0.17.1, 2026-09-30)
+
+- [x] P0 crash on list-valued DOIs; per-paper error isolation.
+- [x] P1 rate limits, REF-view last reference (FULL-view recovery),
+      completeness fallbacks, cross-index citers, S2 resolution routes.
+- [x] P2 background jobs, inline nodes/paged full, key-route wording,
+      context cleaning, per-strategy table, duplicates.
+- [ ] 0.18.0: context fallback from full text; `path_transmission`;
+      multi-index corpus diff; coding-sheet export.
+
 ## Phase 3 — Research pipeline
 
 Orchestrator skill (Session D below) and the lineage-model ideas. Mostly

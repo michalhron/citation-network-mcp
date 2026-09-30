@@ -26,7 +26,8 @@ GROUPS = [
     ('Bibliometrics and bibliography', ['publication_counts', 'topic_landscape',
                                         'get_journal_metrics', 'find_journals',
                                         'get_bibtex']),
-    ('Diagnostics', ['diagnose_connection', 'get_quota_status', 'get_server_info']),
+    ('Diagnostics and jobs', ['diagnose_connection', 'get_quota_status', 'get_server_info',
+                              'job_status', 'job_result']),
 ]
 
 HEADER = """# Tool reference

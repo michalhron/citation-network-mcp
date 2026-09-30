@@ -6,7 +6,7 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 import mcp.types as types
 
-from . import __version__
+from . import __version__, jobs
 # fetch_bibtex and fetch_oa_fulltext are imported here so tools resolve them
 # through this module at call time (tests replace them here).
 from .bibtex import fetch_bibtex  # noqa: F401
@@ -61,6 +61,8 @@ async def handle_call_tool(
         handler = HANDLERS.get(name)
         if handler is None:
             raise ValueError(f"Unknown tool: {name}")
+        if name in jobs.LONG_TOOLS:
+            return await jobs.run(name, arguments, handler)
         return await handler(arguments)
 
     except Exception as e:

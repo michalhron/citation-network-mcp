@@ -148,7 +148,7 @@ Walk the citation lineage of a seed paper across multiple generations. Forward: 
 
 ### `citation_network` · **OpenAlex**
 
-Direct-citation network within a set of papers, in one call: fetches every paper's reference list, keeps only the references to other papers in the set, and runs main-path analysis (SPC weights, local and global main path, key routes). Flags papers whose reference list looks short against the Crossref count, since they silently lose edges. Give ids (Scopus IDs/EIDs; with source='openalex', DOIs or OpenAlex IDs) or a query. Writes the corpus as JSON, the network as Pajek .net (arcs run from cited to citing paper, weighted by SPC; opens in Pajek, VOSviewer and Gephi) and an edge CSV. Cost: one reference request per paper (cached).
+Direct-citation network within a set of papers, in one call: fetches every paper's reference list, keeps only the references to other papers in the set, and runs main-path analysis (SPC weights, local and global main path, key routes). Give ids (Scopus IDs/EIDs; with source='openalex', DOIs or OpenAlex IDs) or a query. Completeness: each list is compared with an independent reference count (Crossref, else OpenAlex, else Semantic Scholar; the source is reported per paper); short = fewer than 90% of the comparison count and at least 5 references missing (SCOPUS_COMPLETENESS_RATIO, SCOPUS_COMPLETENESS_MIN_MISSING). Papers whose references could not be loaded or parsed are listed, retried once after rate limits, and the main path is marked provisional while any are missing. Likely duplicate records are listed. Writes JSON, Pajek .net (arcs from cited to citing, SPC weights; Pajek, VOSviewer, Gephi) and an edge CSV. Cost: one reference request per paper (cached). Sets over about 50 papers may return a job ID: poll job_status, then job_result.
 
 | Parameter | Type | Default | Description |
 | --- | --- | --- | --- |
@@ -156,15 +156,17 @@ Direct-citation network within a set of papers, in one call: fetches every paper
 | `query` | string |  | Search query defining the set, instead of ids. |
 | `max_results` | integer | 300 | With query: how many papers to include (default 300). |
 | `scope` |  |  | Restrict to journals, by ISSN: a list of ISSNs, or a basket name ('basket_of_eight' / 'ais8': the AIS Senior Scholars' Basket of Eight). ISSNs are used rather than journal names, which Scopus spells inconsistently. |
-| `key_routes` | integer | 10 | Number of top-SPC key edges to extend into key-route main paths (Liu & Lu 2012; default 10, 0 = none). |
-| `check_completeness` | boolean | True | Compare each reference list with the Crossref reference count (default true; one Crossref request per DOI). |
-| `inline` | `summary` \| `edges` \| `full` | edges | What the reply carries besides the file paths. 'summary': counts, flags and paths. 'edges' (default): also every edge as a compact line (up to 2,000). 'full': the whole corpus as JSON, for callers that cannot read the server's files (cloud sessions). |
+| `key_routes` | integer | 10 | Number of top-SPC key edges to extend into key-route main paths (Liu & Lu 2012; default 10, 0 = none). Key edges that extend into the same route are merged. |
+| `check_completeness` | boolean | True | Compare each reference list with an independent count (default true). |
+| `inline` | `summary` \| `edges` \| `nodes` \| `full` | edges | What the reply carries besides the file paths. 'summary': counts, flags and paths. 'edges' (default): also every edge as a compact line (up to 2,000). 'nodes': one compact line per paper (ID, author year, venue, references retrieved/reported, comparison count and source, completeness, error) plus the edges: node-level data for callers that cannot read the server's files, about 25k characters for 150 papers. 'full': the corpus as JSON, paged by page/page_size nodes. |
+| `page` | integer | 1 | With inline='full': which page of nodes (1-based). |
+| `page_size` | integer | 50 | With inline='full': nodes per page (default 50). |
 
 ## Audit
 
 ### `resolve_citers` · **OpenAlex**
 
-All papers citing one or more seed papers, found by several search strategies at once and verified. Runs REF() on each seed plus any extra queries (for example a title-phrase query), merges the hits, then checks each hit's own reference list for the seeds. Reports what each strategy found and missed, hits that cite no seed (false positives, or a truncated reference list), and the confirmed set. Scopus cost: one search page per 25 hits per strategy, plus one reference request per hit when verify is on (cached, and reused by citation_network).
+All papers citing one or more seed papers, found by several search strategies at once and verified. Runs REF() on each seed plus any extra queries (for example a title-phrase query), merges the hits, then checks each hit's own reference list for the seeds. Reports a per-strategy table (hits, confirmed, unconfirmed, verification failed, confirmed citers the strategy missed). With cross_check (default on when scope is given) it also asks OpenAlex and Semantic Scholar which in-scope papers cite the seeds and lists those Scopus misses or cannot confirm, with Scopus's reference count against the external one, so truncated Scopus reference lists become visible. The Scopus result stays Scopus-only. Long runs may return a job ID: poll job_status, then job_result.
 
 | Parameter | Type | Default | Description |
 | --- | --- | --- | --- |
@@ -172,18 +174,21 @@ All papers citing one or more seed papers, found by several search strategies at
 | `queries` | list of string |  | Extra search strategies, e.g. REF("organizing vision") or REFAUTH(swanson) AND REFTITLE("organizing vision"). |
 | `scope` |  |  | Restrict to journals, by ISSN: a list of ISSNs, or a basket name ('basket_of_eight' / 'ais8': the AIS Senior Scholars' Basket of Eight). ISSNs are used rather than journal names, which Scopus spells inconsistently. |
 | `verify` | boolean | True | Check each hit's reference list for the seeds (default true). |
+| `cross_check` | boolean |  | Scopus only: list in-scope citers that OpenAlex or Semantic Scholar know and Scopus misses (default: on when scope is set). |
 | `max_results` | integer | 1000 | Cap on hits per strategy (default 1000). |
-| `inline` | `summary` \| `compact` | compact | 'compact' (default): every hit as one JSON line (ID, DOI, year, title, seeds cited, strategies). 'summary': counts only. |
+| `inline` | `summary` \| `compact` | compact | 'compact' (default): every hit as one JSON line (ID, DOI, year, title, status, seeds found in its references, strategies). 'summary': counts only. |
 
 ### `citation_context`
 
-How one paper cites another: the citing sentences, the citation intent (background, methodology, result) and whether Semantic Scholar classes the citation as influential. Evidence for whether a citation edge carries the cited idea or is a passing mention. Up to 50 pairs per call; IDs are DOIs, Scopus IDs or OpenAlex IDs. Contexts are missing for some publishers, and for papers Semantic Scholar does not hold.
+How one paper cites another: the citing sentences, the citation intent (background, methodology, result) and whether Semantic Scholar classes the citation as influential. Evidence for whether a citation edge carries the cited idea or is a passing mention. Up to 50 pairs per call; IDs are DOIs, Scopus IDs or OpenAlex IDs, resolved to Semantic Scholar by DOI, MAG ID, then title and year (the route is reported). Statuses: found, contexts_withheld (the citation is known, its sentences are not), edge_absent_in_s2, citing_paper_unresolved, cited_paper_unresolved. Contexts are cleaned of page headers and citation-free noise and ranked, most informative first.
 
 | Parameter | Type | Default | Description |
 | --- | --- | --- | --- |
 | `citing` | string |  | The citing paper (single pair). |
 | `cited` | string |  | The cited paper (single pair). |
 | `pairs` | list of object |  | Several [citing, cited] pairs, instead of citing/cited. |
+| `max_contexts` | integer | 3 | Most contexts returned per pair (default 3). |
+| `construct_terms` | list of string |  | Terms that make a context more informative, e.g. ['organizing vision']. |
 
 ## Bibliometrics and bibliography
 
@@ -238,7 +243,7 @@ BibTeX entries for a list of papers, written to a .bib file and returned inline.
 | --- | --- | --- | --- |
 | `identifiers` | list of string | required | DOIs, Scopus IDs/EIDs, or OpenAlex work IDs (W...). |
 
-## Diagnostics
+## Diagnostics and jobs
 
 ### `diagnose_connection`
 
@@ -251,3 +256,19 @@ Get the current API quota status (remaining/limit). Note: Values are updated onl
 ### `get_server_info`
 
 Return the server version and a health summary. Call this to confirm which build you are talking to.
+
+### `job_status`
+
+State of a background job started by a long tool call (citation_network, resolve_citers, ...) that passed the sync budget: running, finished or failed, and its last step.
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `job_id` | string | required |  |
+
+### `job_result`
+
+Output of a finished background job (its status if still running).
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `job_id` | string | required |  |

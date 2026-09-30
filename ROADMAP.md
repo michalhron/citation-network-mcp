@@ -150,6 +150,43 @@ run from a cloud session.
       needs a sanctioned route, e.g. user-supplied PDFs).
 - [ ] Kappa helper for the filled coding sheet.
 
+## From established bibliometrics tools (planned 2026-09-30)
+
+Chosen from bibliometrix, metaknowledge, Pajek/MainPath and CitNetExplorer
+for construct-lineage work (main paths, the transmission audit). Items 1–4
+make one release that strengthens a methods section; 5–6 follow.
+
+- [x] **1. Main-path variants** (Pajek, MainPath; 0.19.0). SPLC and SPNP
+      beside SPC; local forward, local backward and global searches;
+      local and global key routes; robustness of the global path across
+      the three weights. Organizing-vision network: the global path is the
+      same under all three; the local backward path leaves it after Wang
+      2010 (Nielsen 2014, Gal 2022).
+- [ ] **2. Thematic evolution** (bibliometrix). Term clusters per time
+      slice, and how they split, merge and drift between slices: the
+      corpus-level counterpart of the construct-shifted edge label (does
+      "organizing vision" dissolve into "IT fashion" or "institutional
+      logics"?). Medium.
+- [ ] **3. Reference Publication Year Spectroscopy** (metaknowledge,
+      bibliometrix). Peaks in the cited years of a corpus's references
+      reveal its historical roots. Cheap: complete reference lists are
+      already fetched.
+- [ ] **4. Historiograph** (Garfield; bibliometrix). Time-ordered drawing of
+      the most-cited papers in the set and the citations among them, beside
+      the main path. Mostly rendering of citation_network output.
+- [ ] **5. Research fronts** (CitNetExplorer). Community detection on the
+      citation network, clusters labelled by key terms; shows whether the
+      main path stays in one front or hops between fronts. Medium.
+- [ ] **6. Import of Scopus / Web of Science export files**, merged and
+      deduplicated (bibliometrix, metaknowledge): a corpus fixed from a
+      saved search, reproducible without API access on the day. Medium.
+
+Deliberately left out: Lotka and Bradford laws (find_journals and
+topic_landscape cover venue quality), a point-and-click interface (the
+conversation is the interface), topic modelling (Claude reading abstracts
+does it more transparently), active-learning screening (ASReview's job),
+co-authorship and country networks and altmetrics (not lineage questions).
+
 ## Phase 3 — Research pipeline
 
 Orchestrator skill (Session D below) and the lineage-model ideas. Mostly

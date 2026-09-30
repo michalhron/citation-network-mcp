@@ -2,7 +2,7 @@
   "manifest_version": "0.4",
   "name": "scopus-plus-mcp",
   "display_name": "Scopus Plus MCP",
-  "version": "0.18.0",
+  "version": "0.19.0",
   "description": "Scopus and more: search, full text, citation networks, journal quality and bibliometrics; OpenAlex without a subscription.",
   "long_description": "Search Scopus and ScienceDirect full text, trace citation lineages, map coupling and co-citation networks, scope reviews by field and journal quartile, and get counts, metrics and BibTeX. OpenAlex covers the same analyses without a Scopus subscription. Not affiliated with Elsevier.",
   "author": {

@@ -274,7 +274,8 @@ def test_citation_network_scopus_ids(tmp_path):
     assert ': 1 short, 2 ok, 0 unknown. Comparison counts from crossref 2, openalex 1.' in text
     assert 'SHORT 3 Wang 2010: 2 references retrieved, openalex lists 40.' in text
     assert 'Main path: 3 papers, 2 ok, 1 short, 0 unknown.' in text
-    assert 'Main path (global): Swanson 1997 → Ramiller 2003 → Wang 2010' in text
+    assert 'Main path (SPC, global): Swanson 1997 → Ramiller 2003 → Wang 2010' in text
+    assert 'Robustness: SPC, SPLC and SPNP give the same global main path.' in text
     assert '3 2 ' in text and '2 1 ' in text
     query = client.search_all.await_args.args[0]
     assert query == 'EID(2-s2.0-1) OR EID(2-s2.0-2) OR EID(2-s2.0-3)'

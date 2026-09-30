@@ -30,7 +30,7 @@ server, so any MCP client can use it: Claude Desktop, Claude Code, Cursor.
   and see how often and where each one uses it.
 - 🩺 **Honest about access.** One call tells you which tools your current
   Scopus access supports, and why the rest fail.
-- ✅ **Tested.** 477 test functions, CI on Linux, macOS and Windows, and a
+- ✅ **Tested.** 483 test functions, CI on Linux, macOS and Windows, and a
   live check of every tool against the real APIs.
 
 How it compares with the other Scopus MCP servers: **[comparison](docs/comparison.md)**.

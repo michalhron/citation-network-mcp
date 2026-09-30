@@ -45,6 +45,9 @@ def write_lineage_to_disk(
     return str(json_path)
 
 
+WEIGHTS = ('spc', 'splc', 'spnp')
+
+
 def _rec_key(r: Dict[str, Any]) -> Optional[str]:
     """Stable key for a lineage record: scopus_id, else openalex_id (OpenAlex
     walks), else doi:…"""
@@ -57,7 +60,7 @@ def _rec_key(r: Dict[str, Any]) -> Optional[str]:
     return None
 
 
-def compute_main_path(records: List[Dict[str, Any]]) -> Dict[str, Any]:
+def compute_main_path(records: List[Dict[str, Any]], weight: str = 'spc') -> Dict[str, Any]:
     """Compute canonical Batagelj (2003) SPC weights and the main path.
 
     Builds a directed acyclic graph from the ``parents`` field of each record
@@ -152,29 +155,34 @@ def compute_main_path(records: List[Dict[str, Any]]) -> Dict[str, Any]:
     real_sources = [k for k in topo if not any(p in topo_set for p in pred[k])]
     real_sinks   = [k for k in topo if not any(s in topo_set for s in succ[k])]
 
-    # n_minus[v] = # distinct paths from pseudo-source to v
-    # Forward pass: pseudo-source → real sources (each counts 1)
+    if weight not in WEIGHTS:
+        raise ValueError(f"weight must be one of {', '.join(WEIGHTS)}")
+    # Path counts behind the three standard traversal weights (Batagelj
+    # 2003; Liu & Lu 2012). Edge weight = tail count x head count:
+    #   SPC  = paths from sources to u  x  paths from v to sinks
+    #   SPLC = paths from ANY node to u (incl. u) x paths from v to sinks
+    #   SPNP = paths from any node to u (incl. u) x paths from v to any node (incl. v)
     n_minus: Dict[str, int] = {}
     for k in topo:
         live_preds = [p for p in pred[k] if p in topo_set]
-        if not live_preds:
+        from_preds = sum(n_minus.get(p, 0) for p in live_preds)
+        if weight == 'spc':
             # Real source: connected from pseudo-source by a single edge → 1
-            n_minus[k] = 1
+            n_minus[k] = from_preds if live_preds else 1
         else:
-            n_minus[k] = sum(n_minus.get(p, 0) for p in live_preds)
-
-    # n_plus[v] = # distinct paths from v to pseudo-sink
-    # Backward pass: real sinks → pseudo-sink (each counts 1)
+            n_minus[k] = from_preds + 1
     n_plus: Dict[str, int] = {}
     for k in reversed(topo):
         live_succs = [s for s in succ[k] if s in topo_set]
-        if not live_succs:
-            # Real sink: connected to pseudo-sink → 1
-            n_plus[k] = 1
+        to_succs = sum(n_plus.get(s, 0) for s in live_succs)
+        if weight == 'spnp':
+            n_plus[k] = to_succs + 1
         else:
-            n_plus[k] = sum(n_plus.get(s, 0) for s in live_succs)
+            # Real sink: connected to pseudo-sink → 1
+            n_plus[k] = to_succs if live_succs else 1
 
-    # Edge SPC weights: spc(u,v) = n_minus[u] * n_plus[v]
+    # Edge weights (key 'spc_weight' kept for compatibility; it holds the
+    # chosen weight): w(u,v) = n_minus[u] * n_plus[v]
     edge_weights = [
         {'source': u, 'target': v, 'spc_weight': n_minus[u] * n_plus[v]}
         for u, v in valid_edges
@@ -233,10 +241,33 @@ def compute_main_path(records: List[Dict[str, Any]]) -> Dict[str, Any]:
             cur = dp_prev[cur]
         global_path.reverse()
 
+    # ------------------------------------------------------------------
+    # Local backward main path: from the sink whose incoming edge weighs
+    # most, follow the heaviest incoming edge back to a source.
+    # ------------------------------------------------------------------
+    backward_path: List[str] = []
+    sink_in = [(max(spc_map.get((p, k), 0) for p in pred[k] if p in topo_set), k)
+               for k in real_sinks if any(p in topo_set for p in pred[k])]
+    if sink_in:
+        current = max(sink_in)[1]
+        backward_path = [current]
+        while True:
+            live_preds = [p for p in pred[current] if p in topo_set]
+            if not live_preds:
+                break
+            best = max(live_preds, key=lambda u: spc_map.get((u, current), 0))
+            if best in backward_path:
+                break
+            backward_path.append(best)
+            current = best
+        backward_path.reverse()
+
     return {
+        'weight': weight,
         'edges': edge_weights,
         'main_path': greedy_path,
         'global_main_path': global_path,
+        'backward_main_path': backward_path,
         'removed_cycle_edges': removed,
         'note': (f"Removed {len(removed)} edge(s) to break citation cycles; "
                  "see removed_cycle_edges.") if removed else None,
@@ -335,36 +366,43 @@ def _find_cycle(nodes: List[str], succ, allowed: set) -> List[str]:
     return []
 
 
-def key_route_paths(edges: List[Dict[str, Any]], k: int = 10) -> Dict[str, Any]:
-    """Key-route main paths (Liu & Lu 2012) from SPC-weighted edges.
+def key_route_paths(edges: List[Dict[str, Any]], k: int = 10, search: str = 'local') -> Dict[str, Any]:
+    """Key-route main paths (Liu & Lu 2012) from weighted edges.
 
-    The k highest-SPC edges are each extended backward to a source and
-    forward to a sink, always along the heaviest adjoining edge; the union
-    of these routes is returned. Unlike a single main path it keeps
-    parallel streams of a literature visible.
+    The k heaviest edges are each extended backward to a source and forward
+    to a sink, and the union of these routes is returned; unlike a single
+    main path it keeps parallel streams visible. search='local' extends
+    along the heaviest adjoining edge at each step; search='global' takes
+    the heaviest whole path from a source to the key edge and from it to a
+    sink.
     """
     if not edges or k <= 0:
-        return {'k': k, 'routes': [], 'nodes': [], 'edges': []}
+        return {'k': k, 'search': search, 'routes': [], 'nodes': [], 'edges': []}
     succ: Dict[str, List[tuple]] = {}
     pred: Dict[str, List[tuple]] = {}
     for e in edges:
         succ.setdefault(e['source'], []).append((e['spc_weight'], e['target']))
         pred.setdefault(e['target'], []).append((e['spc_weight'], e['source']))
+    if search == 'global':
+        to_node, from_node = _heaviest_paths(edges, succ, pred)
     key_edges = sorted(edges, key=lambda e: (-e['spc_weight'], e['source'], e['target']))[:k]
     routes, route_edges, route_nodes = [], [], []
     for e in key_edges:
-        back = [e['source']]
-        while pred.get(back[0]):
-            prev = max(pred[back[0]])[1]
-            if prev in back:
-                break
-            back.insert(0, prev)
-        fwd = [e['target']]
-        while succ.get(fwd[-1]):
-            nxt = max(succ[fwd[-1]])[1]
-            if nxt in fwd or nxt in back:
-                break
-            fwd.append(nxt)
+        if search == 'global':
+            back, fwd = to_node(e['source']), from_node(e['target'])
+        else:
+            back = [e['source']]
+            while pred.get(back[0]):
+                prev = max(pred[back[0]])[1]
+                if prev in back:
+                    break
+                back.insert(0, prev)
+            fwd = [e['target']]
+            while succ.get(fwd[-1]):
+                nxt = max(succ[fwd[-1]])[1]
+                if nxt in fwd or nxt in back:
+                    break
+                fwd.append(nxt)
         route = back + fwd
         same = next((r for r in routes if r['path'] == route), None)
         if same:  # several key edges often extend to the same route
@@ -376,7 +414,64 @@ def key_route_paths(edges: List[Dict[str, Any]], k: int = 10) -> Dict[str, Any]:
             if [a, b] not in route_edges:
                 route_edges.append([a, b])
         route_nodes.extend(n for n in route if n not in route_nodes)
-    return {'k': k, 'routes': routes, 'nodes': route_nodes, 'edges': route_edges}
+    return {'k': k, 'search': search, 'routes': routes, 'nodes': route_nodes, 'edges': route_edges}
+
+
+def _heaviest_paths(edges, succ, pred):
+    """Functions giving the heaviest path from any source to a node, and
+    from a node to any sink (sum of edge weights), on an acyclic graph."""
+    nodes = {e['source'] for e in edges} | {e['target'] for e in edges}
+    indeg = {n: len(pred.get(n, [])) for n in nodes}
+    queue = deque(n for n in nodes if indeg[n] == 0)
+    order = []
+    while queue:
+        n = queue.popleft()
+        order.append(n)
+        for _, m in succ.get(n, []):
+            indeg[m] -= 1
+            if indeg[m] == 0:
+                queue.append(m)
+    into = {n: (0, None) for n in nodes}      # best weight arriving at n, via
+    for n in order:
+        for w, m in succ.get(n, []):
+            if into[n][0] + w > into[m][0]:
+                into[m] = (into[n][0] + w, n)
+    out = {n: (0, None) for n in nodes}       # best weight leaving n, via
+    for n in reversed(order):
+        for w, m in succ.get(n, []):
+            if out[m][0] + w > out[n][0]:
+                out[n] = (out[m][0] + w, m)
+
+    def to_node(n):
+        path = [n]
+        while into[path[0]][1] is not None:
+            path.insert(0, into[path[0]][1])
+        return path
+
+    def from_node(n):
+        path = [n]
+        while out[path[-1]][1] is not None:
+            path.append(out[path[-1]][1])
+        return path
+    return to_node, from_node
+
+
+def main_path_robustness(records: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Global main paths under SPC, SPLC and SPNP, and how far they agree.
+
+    A main path that survives a change of weight is a finding about the
+    literature; one that does not is partly an artefact of the weight."""
+    paths = {w: compute_main_path(records, weight=w)['global_main_path'] for w in WEIGHTS}
+    sets = {w: set(p) for w, p in paths.items()}
+    core = [n for n in paths['spc'] if all(n in sets[w] for w in WEIGHTS)]
+    union = set().union(*sets.values())
+    pairwise = {}
+    for i, a in enumerate(WEIGHTS):
+        for b in WEIGHTS[i + 1:]:
+            both = sets[a] | sets[b]
+            pairwise[f'{a}-{b}'] = round(len(sets[a] & sets[b]) / len(both), 2) if both else 1.0
+    return {'paths': paths, 'core': core, 'n_union': len(union), 'jaccard': pairwise,
+            'identical': len({tuple(p) for p in paths.values()}) == 1}
 
 
 def write_pajek(nodes: List[Dict[str, Any]], edges: List[Dict[str, Any]], path) -> str:

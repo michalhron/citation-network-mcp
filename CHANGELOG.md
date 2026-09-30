@@ -5,6 +5,12 @@ are pushed yet (see "Release process" in ROADMAP.md).
 
 ## [Unreleased]
 
+### Added
+- `diagnose_connection` probes per-API capabilities: REF-view references,
+  ScienceDirect full text (a subscription canary, so open access cannot pass
+  for entitlement) and Serial Title. Reports `unavailable_tools`, the tools
+  that cannot work with the current access.
+
 ## [0.8.1] - 2026-09-30
 
 ### Added

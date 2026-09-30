@@ -47,9 +47,11 @@ if the API key itself survives the affiliation. Two consequences:
 
 Every new tool gets a live smoke test before it is trusted (see Lessons).
 
-1. [ ] **Per-API access check.** Extend `diagnose_connection` with REF view,
-       ScienceDirect full text and Serial Title probes. Settles the REF-view
-       contradiction under Known boundaries while access still exists.
+1. [x] **Per-API access check.** `diagnose_connection` probes REF view,
+       ScienceDirect full text and Serial Title, and lists unavailable tools.
+       Live on campus 2026-09-30: all three entitled (REF returned 109 refs;
+       subscription full text 53,017 chars). So the June REF refusal was not a
+       permanent key limit; most likely it happened off the campus network.
 2. [ ] **Harvest before end of November.** Run the lineage, reference and
        full-text pulls that "What Inherits?" and "Hype Without a Cycle" need,
        to disk via the file-output contract. Data work, not code.

@@ -126,10 +126,13 @@ async def handle_list_tools() -> list[types.Tool]:
         types.Tool(
             name="diagnose_connection",
             description=(
-                "Diagnose Scopus connectivity and entitlement. Runs four checks "
-                "(config presence, api.elsevier.com reachability, metadata "
-                "entitlement, search entitlement) and returns a JSON report with "
-                "a one-line verdict. Run this first when Scopus behaves strangely "
+                "Diagnose Scopus connectivity and entitlement. Checks config "
+                "presence, api.elsevier.com reachability, metadata and search "
+                "entitlement, and per-API capabilities (REF-view references, "
+                "ScienceDirect full text, Serial Title journal metrics). Returns "
+                "a JSON report with a one-line verdict and 'unavailable_tools', "
+                "the tools that cannot work with the current access. Run this "
+                "first when Scopus behaves strangely "
                 "— especially when valid searches fail with 'Error translating "
                 "query', which usually means missing subscriber entitlement "
                 "(off-network without SCOPUS_INSTTOKEN), not bad query syntax."

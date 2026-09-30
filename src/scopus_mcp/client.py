@@ -52,6 +52,23 @@ RETRYABLE_TRANSPORT_ERRORS = (
 # Stable, existing record used by diagnose_connection as a metadata canary.
 CANARY_SCOPUS_ID = "85007305299"
 CANARY_QUERY = "ALL(gene)"
+# Capability canaries. The full-text canary must be a subscription (non-OA)
+# ScienceDirect article, so full text proves entitlement rather than open
+# access: Hummon & Doreian (1989), Social Networks, ~53k chars when entitled.
+CANARY_FULLTEXT_DOI = "10.1016/0378-8733(89)90017-8"
+CANARY_ISSN = "0276-7783"  # MIS Quarterly
+# Unentitled article requests can return 200 with abstract-length text only.
+FULLTEXT_MIN_CHARS = 5000
+
+# Which tools each capability gates, so diagnostics can say what will fail.
+CAPABILITY_TOOLS = {
+    'search': ['search_scopus', 'search_all', 'get_citing_papers',
+               'co_citation', 'citation_lineage (forward)'],
+    'references': ['get_references', 'bibliographic_coupling',
+                   'citation_lineage (backward)'],
+    'fulltext': ['get_fulltext (ScienceDirect step; falls back to OA/abstract)'],
+    'serial_title': [],
+}
 
 class ScopusClient:
     """
@@ -619,9 +636,89 @@ class ScopusClient:
             search['detail'] = msg[:300]
         report['search'] = search
 
+        # 5. Per-API capabilities beyond search. Elsevier entitles endpoints
+        # separately, so a working search says nothing about REF view or full
+        # text. Probed concurrently to keep the diagnosis quick.
+        references, fulltext, serial_title = await asyncio.gather(
+            self._probe_references(), self._probe_fulltext(), self._probe_serial_title()
+        )
+        report['capabilities'] = {
+            'references': references,
+            'fulltext': fulltext,
+            'serial_title': serial_title,
+        }
+        report['unavailable_tools'] = self._unavailable_tools(report)
+
         report['entitlement_via'] = self._entitlement_route(report)
         report['verdict'] = self._build_verdict(report)
         return report
+
+    @staticmethod
+    def _classify_probe_error(msg: str) -> str:
+        if any(m in msg for m in ('401', '403', 'Authentication failed',
+                                  'REF-view fetch failed', 'AUTHORIZATION')):
+            return 'entitlement_missing'
+        if 'Network error' in msg or 'Timeout' in msg or 'timed out' in msg:
+            return 'network'
+        return 'error'
+
+    async def _probe_references(self) -> Dict[str, Any]:
+        """REF view on the canary record: are reference lists entitled?"""
+        result: Dict[str, Any] = {'status': 'ok'}
+        try:
+            data = await self._request(
+                'GET', f'content/abstract/scopus_id/{CANARY_SCOPUS_ID}',
+                {'view': 'REF', 'count': 1}, use_cache=False,
+            )
+            refs = (data.get('abstracts-retrieval-response') or {}).get('references') or {}
+            if not refs:
+                result['status'] = 'empty'
+        except Exception as exc:
+            result['status'] = self._classify_probe_error(str(exc))
+            result['detail'] = str(exc)[:300]
+        return result
+
+    async def _probe_fulltext(self) -> Dict[str, Any]:
+        """Subscription article: full body, abstract only, or refused?"""
+        result: Dict[str, Any] = {'status': 'ok', 'canary_doi': CANARY_FULLTEXT_DOI}
+        try:
+            data = await self._request(
+                'GET', f'content/article/doi/{CANARY_FULLTEXT_DOI}', use_cache=False,
+            )
+            root = data.get('full-text-retrieval-response') or {}
+            chars = len(str(root.get('originalText') or ''))
+            result['chars'] = chars
+            if chars < FULLTEXT_MIN_CHARS:
+                result['status'] = 'abstract_only'
+        except Exception as exc:
+            result['status'] = self._classify_probe_error(str(exc))
+            result['detail'] = str(exc)[:300]
+        return result
+
+    async def _probe_serial_title(self) -> Dict[str, Any]:
+        """Serial Title API: journal metrics (SJR, SNIP, CiteScore)."""
+        result: Dict[str, Any] = {'status': 'ok', 'canary_issn': CANARY_ISSN}
+        try:
+            data = await self._request(
+                'GET', f'content/serial/title/issn/{CANARY_ISSN}', use_cache=False,
+            )
+            if not (data.get('serial-metadata-response') or {}).get('entry'):
+                result['status'] = 'empty'
+        except Exception as exc:
+            result['status'] = self._classify_probe_error(str(exc))
+            result['detail'] = str(exc)[:300]
+        return result
+
+    @staticmethod
+    def _unavailable_tools(report: Dict[str, Any]) -> list:
+        """Tools gated by a capability that is not 'ok', in a stable order."""
+        statuses = {'search': report['search']['status']}
+        statuses.update({k: v['status'] for k, v in report.get('capabilities', {}).items()})
+        tools = []
+        for capability, status in statuses.items():
+            if status != 'ok':
+                tools.extend(CAPABILITY_TOOLS.get(capability, []))
+        return tools
 
     @staticmethod
     def _entitlement_route(report: Dict[str, Any]) -> Optional[str]:
@@ -642,7 +739,9 @@ class ScopusClient:
 
     @staticmethod
     def _build_verdict(report: Dict[str, Any]) -> str:
-        """Collapses the four checks into a one-line, user-relayable verdict."""
+        """Collapses the checks into a one-line, user-relayable verdict.
+
+        The list of affected tools is in report['unavailable_tools']."""
         metadata = report['metadata']['status']
         search = report['search']['status']
         reachability = report['reachability']
@@ -679,6 +778,13 @@ class ScopusClient:
             )
         elif metadata == 'ok' and search == 'ok':
             verdict = "Connection and entitlement healthy."
+            capabilities = report.get('capabilities', {})
+            limited = [k for k, v in capabilities.items() if v.get('status') != 'ok']
+            if limited:
+                verdict = (
+                    "Search works, but not every API is entitled: "
+                    f"{', '.join(limited)} unavailable."
+                )
         elif not reachability['reachable'] or search == 'network':
             verdict = "api.elsevier.com is not reachable; check your network connection."
         else:

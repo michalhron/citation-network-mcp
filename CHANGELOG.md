@@ -19,6 +19,11 @@ are pushed yet (see "Release process" in ROADMAP.md).
   `openalex_api_key`, or `config.json`), sent as a Bearer header. A free key
   raises OpenAlex's daily budget from $0.10 to $1; errors report the
   remaining budget.
+- `get_bibtex`: BibTeX for up to 200 DOIs, Scopus IDs or OpenAlex IDs via DOI
+  content negotiation, written to a `.bib` file. Page ranges use `--`,
+  repeated keys get a/b suffixes, and one paper given twice appears once.
+  Papers without a DOI get an entry generated from Scopus or OpenAlex
+  metadata, marked in its `note` field.
 - `citation_lineage` accepts `source="openalex"`: forward walks OpenAlex's
   citing works, backward walks its reference lists, with OpenAlex work IDs
   as node keys. `sort="relevancy"` stays Scopus-only.

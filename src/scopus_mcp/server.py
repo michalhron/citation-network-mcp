@@ -1,6 +1,7 @@
 import asyncio
 import json
 from datetime import date as _today_date
+from datetime import datetime as _today_datetime
 import logging
 from typing import Any, Optional
 
@@ -8,6 +9,7 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 import mcp.types as types
 
+from .bibtex import fetch_bibtex, generated_entry, make_keys_unique
 from .client import FULLTEXT_MIN_CHARS, ScopusClient
 from .openalex import (
     OpenAlexClient,
@@ -16,6 +18,7 @@ from .openalex import (
     short_id,
 )
 from .utils import (
+    _output_dir,
     clean_search_results,
     clean_abstract_details,
     clean_author_profile,
@@ -54,6 +57,8 @@ openalex = OpenAlexClient()
 
 # Cap on the year span of a Scopus publication_counts call (one request per year).
 MAX_SCOPUS_YEARS = 60
+# Cap on identifiers per get_bibtex call.
+MAX_BIBTEX = 200
 
 SOURCE_SCHEMA = {
     "type": "string",
@@ -242,6 +247,29 @@ async def handle_list_tools() -> list[types.Tool]:
                     "source": SOURCE_SCHEMA
                 },
                 "required": ["query"]
+            }
+        ),
+        types.Tool(
+            name="get_bibtex",
+            description=(
+                "BibTeX entries for a list of papers, written to a .bib file and "
+                "returned inline. Identifiers may be DOIs, Scopus IDs/EIDs or "
+                "OpenAlex work IDs. Entries come from the publisher's metadata via "
+                "DOI content negotiation (errors included, so check author names). "
+                "Papers without a DOI, such as AIS conference papers, get a minimal "
+                "entry built from Scopus or OpenAlex metadata, marked with a note. "
+                f"At most {MAX_BIBTEX} identifiers per call."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "identifiers": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "DOIs, Scopus IDs/EIDs, or OpenAlex work IDs (W...)."
+                    }
+                },
+                "required": ["identifiers"]
             }
         ),
         types.Tool(
@@ -560,6 +588,48 @@ async def _openalex_seed_sets(seed_ids: list, mode: str, max_citing: int = 500):
     return seed_sets, seed_meta, skipped
 
 
+def _bibtex_author(display_name: str) -> str:
+    """'Norman P. Hummon' -> 'Hummon, Norman P.' (BibTeX 'Last, First')."""
+    parts = display_name.split()
+    return f"{parts[-1]}, {' '.join(parts[:-1])}" if len(parts) > 1 else display_name
+
+
+async def _bibtex_target(identifier: str):
+    """(doi, fallback metadata, origin) for one identifier.
+
+    DOIs pass straight through. OpenAlex IDs and Scopus IDs are looked up
+    for their DOI, keeping their metadata for a generated entry when there
+    is none (Scopus metadata needs no subscriber entitlement).
+    """
+    key = openalex_work_key(identifier)
+    if key and key.startswith('doi:'):
+        return key[4:], None, None
+    if key:
+        work = await openalex.get_work(key)
+        if not work:
+            raise ValueError("not found in OpenAlex")
+        rec = clean_openalex_work(work)
+        authors = [_bibtex_author(a['author']['display_name'])
+                   for a in (work.get('authorships') or [])
+                   if (a.get('author') or {}).get('display_name')]
+        meta = {'title': rec['title'], 'authors': authors,
+                'year': rec['year'], 'venue': rec['publication_name']}
+        return rec['doi'], meta, 'OpenAlex'
+    details = clean_abstract_details(await client.get_abstract(to_scopus_id(identifier)))
+    if not details.get('title'):
+        raise ValueError("not found in Scopus")
+    authors = []
+    for a in details.get('authors') or []:
+        surname = a.get('surname') or (a.get('name') or '').split(' ')[0]
+        if surname:
+            initials = a.get('initials')
+            authors.append(f"{surname}, {initials}" if initials else surname)
+    meta = {'title': details.get('title'), 'authors': authors,
+            'year': (details.get('cover_date') or '')[:4] or None,
+            'venue': details.get('publication_name')}
+    return details.get('doi'), meta, 'Scopus'
+
+
 def _network_response(label: str, file_prefix: str, seed_sets: dict, seed_meta: dict,
                       n_seeds: int, params_note: str, skipped: list,
                       skipped_reason: str, source: str, min_shared: int):
@@ -875,6 +945,68 @@ async def handle_call_tool(
                 f'min_shared={min_shared}, max_citing_per_seed={max_citing}',
                 skipped, 'no citing papers or API error', source, min_shared,
             )
+
+        elif name == "get_bibtex":
+            identifiers = [str(i).strip() for i in (arguments.get("identifiers") or [])
+                           if str(i).strip()]
+            if not identifiers:
+                raise ValueError("identifiers is required and must be non-empty")
+            if len(identifiers) > MAX_BIBTEX:
+                raise ValueError(f"At most {MAX_BIBTEX} identifiers per call.")
+
+            targets = []
+            failures = []
+            for ident in identifiers:
+                try:
+                    targets.append((ident, *await _bibtex_target(ident)))
+                except Exception as exc:
+                    failures.append(f"{ident}: {exc}")
+
+            dois = sorted({doi.lower() for _, doi, _, _ in targets if doi})
+            fetched = await fetch_bibtex(dois) if dois else {}
+
+            entries = []
+            generated = 0
+            seen_dois = set()
+            for ident, doi, meta, origin in targets:
+                if doi:
+                    doi = doi.lower()
+                    if doi in seen_dois:
+                        continue  # same paper given twice
+                    seen_dois.add(doi)
+                    entry, err = fetched[doi]
+                    if entry:
+                        entries.append(entry)
+                        continue
+                    if not meta:
+                        failures.append(f"{ident}: {err}")
+                        continue
+                entry = generated_entry(meta or {}, origin or 'available')
+                if entry:
+                    entries.append(entry)
+                    generated += 1
+                else:
+                    failures.append(f"{ident}: no DOI and no title to build an entry from")
+
+            entries = make_keys_unique(entries)
+            text = f"{len(entries)} BibTeX entries"
+            if generated:
+                text += f" ({generated} generated from metadata; check them)"
+            if entries:
+                ts = _today_datetime.now().strftime('%Y%m%dT%H%M%S')
+                path = _output_dir() / f'bibtex-{len(entries)}-{ts}.bib'
+                path.write_text('\n\n'.join(entries) + '\n', encoding='utf-8')
+                text += f". Written to: {path}\n"
+            else:
+                text += ".\n"
+            if failures:
+                text += "Not resolved:\n" + '\n'.join(f"  {f}" for f in failures) + "\n"
+            if entries:
+                shown = entries[:50]
+                text += "\n" + '\n\n'.join(shown)
+                if len(entries) > len(shown):
+                    text += f"\n\n({len(entries) - len(shown)} more in the file.)"
+            return [types.TextContent(type="text", text=text)]
 
         elif name == "publication_counts":
             query = arguments.get("query")

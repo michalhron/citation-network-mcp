@@ -30,6 +30,7 @@ and now developed independently; see [Origins](#origins-and-credits).
 | `get_fulltext` | Full text via ScienceDirect, then open access, then abstract, with provenance | — |
 | `bibliographic_coupling` | Seed papers linked by shared references (the research front); GraphML, CSV, PNG | ✓ |
 | `co_citation` | Seed papers linked by being cited together (the intellectual base); GraphML, CSV, PNG | ✓ |
+| `get_bibtex` | BibTeX for DOIs, Scopus IDs or OpenAlex IDs, as a `.bib` file; entries for papers without a DOI are generated from metadata and marked | — |
 | `publication_counts` | Publications per year for a query, e.g. to chart a topic's rise and fall | ✓ |
 | `citation_lineage` | Multi-generation forward or backward walk with search-path-count main path; JSON, interactive HTML, PNG | ✓ |
 | `diagnose_connection` | Which APIs your current access entitles, and which tools will fail | — |

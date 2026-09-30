@@ -75,7 +75,9 @@ Every new tool gets a live smoke test before it is trusted (see Lessons).
        different year profiles, so compare trends within one source only.
 5. [ ] **Journal metrics** (SJR, SNIP, CiteScore) via the Serial Title API,
        for litbaskets baskets.
-6. [ ] **BibTeX export** via Crossref content negotiation.
+6. [x] **BibTeX export.** `get_bibtex`; publisher metadata via DOI content
+       negotiation (errors included: Crossref spells Doreian "Dereian" for
+       Hummon & Doreian 1989), generated entries for DOI-less AIS papers.
 - Dropped: Scopus author search. Needs subscriber entitlement that ends in
   November; OpenAlex author data replaces it.
 

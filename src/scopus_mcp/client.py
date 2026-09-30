@@ -49,6 +49,9 @@ RETRYABLE_TRANSPORT_ERRORS = (
     httpx.RemoteProtocolError,
 )
 
+# Concurrent per-year requests in yearly_counts.
+YEARLY_CONCURRENCY = 4
+
 # The REF view returns at most this many references per response.
 REF_PAGE = 40
 # Upper bound on REF pages per document (2,000 references).
@@ -69,7 +72,8 @@ FULLTEXT_MIN_CHARS = 5000
 # Which tools each capability gates, so diagnostics can say what will fail.
 CAPABILITY_TOOLS = {
     'search': ['search_scopus', 'search_all', 'get_citing_papers',
-               'co_citation', 'citation_lineage (forward)'],
+               'co_citation', 'citation_lineage (forward)',
+               'publication_counts (Scopus)'],
     'references': ['get_references', 'bibliographic_coupling',
                    'citation_lineage (backward)'],
     'fulltext': ['get_fulltext (ScienceDirect step; falls back to OA/abstract)'],
@@ -432,6 +436,29 @@ class ScopusClient:
             pages += 1
         refs_block['reference'] = refs
         return data
+
+    async def yearly_counts(self, query: str, from_year: int, to_year: int) -> Dict[int, int]:
+        """
+        Scopus hits per publication year for a query: one count=1 search per
+        year, reading only opensearch:totalResults. Requests only the
+        identifier field to keep responses small; runs YEARLY_CONCURRENCY at
+        a time. Costs one search request per year.
+        """
+        semaphore = asyncio.Semaphore(YEARLY_CONCURRENCY)
+
+        async def count(year: int):
+            async with semaphore:
+                data = await self._request(
+                    'GET', 'content/search/scopus',
+                    {'query': f'({query}) AND PUBYEAR = {year}', 'count': 1,
+                     'field': 'dc:identifier'},
+                    ttl=self.cache_config['search'],
+                )
+            total = (data.get('search-results') or {}).get('opensearch:totalResults')
+            return year, int(total or 0)
+
+        pairs = await asyncio.gather(*(count(y) for y in range(from_year, to_year + 1)))
+        return dict(pairs)
 
     async def search_all(self, query: str, max_results: int = 200, sort: str = 'coverDate') -> Dict[str, Any]:
         """

@@ -68,8 +68,9 @@ Every new tool gets a live smoke test before it is trusted (see Lessons).
        misattributed to JAIS), one ICIS paper has no exact title match.
        Journal articles work, but thinner (Swanson 2025: 98 references in
        OpenAlex vs 171 in Scopus). Citation-lineage support still to come.
-4. [ ] **Yearly publication counts** for a query (OpenAlex `group_by`, one
-       request; Scopus per-year `totalResults` while entitled).
+4. [x] **Yearly publication counts.** `publication_counts`, both sources.
+       Live 2015–2026 for "organizing vision": Scopus 61, OpenAlex 77, with
+       different year profiles, so compare trends within one source only.
 5. [ ] **Journal metrics** (SJR, SNIP, CiteScore) via the Serial Title API,
        for litbaskets baskets.
 6. [ ] **BibTeX export** via Crossref content negotiation.

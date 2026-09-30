@@ -1,4 +1,6 @@
 import asyncio
+import json
+from datetime import date as _today_date
 import logging
 from typing import Any, Optional
 
@@ -49,6 +51,9 @@ server = Server("scopus-mcp")
 client = ScopusClient()
 # OpenAlex backend: the same analyses without Scopus subscriber entitlement.
 openalex = OpenAlexClient()
+
+# Cap on the year span of a Scopus publication_counts call (one request per year).
+MAX_SCOPUS_YEARS = 60
 
 SOURCE_SCHEMA = {
     "type": "string",
@@ -234,6 +239,34 @@ async def handle_list_tools() -> list[types.Tool]:
                             "Defaults to 'coverDate' for Scopus, 'relevance' for OpenAlex."
                         )
                     },
+                    "source": SOURCE_SCHEMA
+                },
+                "required": ["query"]
+            }
+        ),
+        types.Tool(
+            name="publication_counts",
+            description=(
+                "Count publications per year for a query, e.g. to chart how "
+                "attention to a topic rose and fell. Scopus: your query in Scopus "
+                "syntax, one request per year, so from_year and to_year are required "
+                f"(at most {MAX_SCOPUS_YEARS} years). OpenAlex: plain words matched "
+                "against title and abstract (quote phrases), one request for all "
+                "years. The two sources count differently; compare trends within "
+                "one source, not levels across sources."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": (
+                            "Scopus: Scopus syntax, e.g. 'TITLE-ABS-KEY(\"organizing "
+                            "vision\")'. OpenAlex: e.g. '\"organizing vision\"'."
+                        )
+                    },
+                    "from_year": {"type": "integer", "description": "First year (inclusive)."},
+                    "to_year": {"type": "integer", "description": "Last year (inclusive)."},
                     "source": SOURCE_SCHEMA
                 },
                 "required": ["query"]
@@ -835,6 +868,56 @@ async def handle_call_tool(
                 f'min_shared={min_shared}, max_citing_per_seed={max_citing}',
                 skipped, 'no citing papers or API error', source, min_shared,
             )
+
+        elif name == "publication_counts":
+            query = arguments.get("query")
+            if not query:
+                raise ValueError("query is required")
+            source = _source(arguments)
+            from_year = arguments.get("from_year")
+            to_year = arguments.get("to_year")
+            from_year = int(from_year) if from_year is not None else None
+            to_year = int(to_year) if to_year is not None else None
+            if from_year is not None and to_year is not None and from_year > to_year:
+                raise ValueError(f"from_year {from_year} is after to_year {to_year}")
+
+            if source == 'openalex':
+                counts, total = await openalex.yearly_counts(query, from_year, to_year)
+                note = "OpenAlex title-and-abstract match."
+            else:
+                if from_year is None or to_year is None:
+                    raise ValueError(
+                        "Scopus publication_counts needs from_year and to_year "
+                        "(one request per year); OpenAlex does not."
+                    )
+                if to_year - from_year + 1 > MAX_SCOPUS_YEARS:
+                    raise ValueError(
+                        f"Scopus publication_counts spans at most {MAX_SCOPUS_YEARS} "
+                        f"years; split the range or use source='openalex'."
+                    )
+                counts = await client.yearly_counts(query, from_year, to_year)
+                total = sum(counts.values())
+                note = "Scopus search hits per PUBYEAR for the query as written."
+
+            # Years with no records are absent from grouped results; show them
+            # as zero within the requested range so gaps are visible.
+            if counts or (from_year is not None and to_year is not None):
+                lo = from_year if from_year is not None else min(counts)
+                hi = to_year if to_year is not None else max(counts)
+                counts = {y: counts.get(y, 0) for y in range(lo, hi + 1)}
+            current_year = _today_date.today().year
+            if counts and max(counts) >= current_year:
+                note += f" {current_year} is incomplete."
+            peak = max(counts, key=counts.get) if any(counts.values()) else None
+            result = {
+                'source': source,
+                'query': query,
+                'counts': {str(y): n for y, n in counts.items()},
+                'total': total,
+                'peak_year': peak,
+                'note': note,
+            }
+            return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
         elif name == "get_server_info":
             return [types.TextContent(

@@ -30,7 +30,9 @@ field; the environment variable wins.
 
 | Environment variable | `config.json` field | Default | Purpose |
 | --- | --- | --- | --- |
-| `SCOPUS_INSTTOKEN` | `insttoken` | — | Institutional token, sent as `X-ELS-Insttoken`. Needed for most ScienceDirect full text. |
+| `SCOPUS_INSTTOKEN` | `insttoken` | — | Institutional token, sent as `X-ELS-Insttoken`. Entitles search and most ScienceDirect full text from any network. Prefer the OS secret store (see [below](#store-secrets-in-the-os-secret-store)). |
+| `SCOPUS_PROXY` | `proxy` | — | Proxy for `api.elsevier.com` traffic only, e.g. `socks5h://127.0.0.1:1080`. Schemes: `http`, `https`, `socks5`, `socks5h`. |
+| `SCOPUS_DISABLE_SECRET_STORE` | — | — | Set to any value to skip the OS secret-store lookup. |
 | `SCOPUS_PAGE_SIZE` | `page_size` | `25` | Records fetched per request by `search_all`. |
 | `CACHE_TTL_SEARCH` | `cache_ttl_search` | `3600` | Search cache lifetime, seconds. |
 | `CACHE_TTL_ABSTRACT` | `cache_ttl_abstract` | `2592000` | Abstract cache lifetime, seconds. |
@@ -177,17 +179,70 @@ config presence, reachability of `api.elsevier.com`, metadata entitlement, and
 search entitlement, then tells you which of those is actually broken. It
 reports only whether credentials are *present*, never their values.
 
-### Two remedies
+### Three remedies
 
 1.  **Connect your institution's VPN.** This puts your requests inside the
     subscribing IP range and needs no configuration change.
-2.  **Set an institutional token (`insttoken`).** Request one from Elsevier
-    developer support at [dev.elsevier.com](https://dev.elsevier.com/) — this
-    is usually coordinated through your institution's library, since the token
-    is tied to the library's subscription. A token works from any network,
-    which makes it the better option if you travel.
+2.  **Set an institutional token (`insttoken`).** Ask your library's Scopus
+    administrator, or Elsevier support via
+    [dev.elsevier.com](https://dev.elsevier.com/), for a token linked to your
+    API key; the token is tied to the library's subscription. It works from
+    any network, which makes it the best option if you travel.
+3.  **Proxy only Elsevier traffic through an on-campus host (`SCOPUS_PROXY`).**
+    If you can SSH to a machine on the institutional network, and your
+    institution permits it, open a SOCKS tunnel and point the server at it.
+    Only `api.elsevier.com` requests use the proxy; OpenAlex, Crossref and
+    Unpaywall calls go direct. `ssh` is built into macOS, Linux and
+    Windows 10+:
 
-Set the token in the `env` block of your Claude Desktop config:
+    ```bash
+    ssh -N -D 1080 you@host.your-university.edu
+    ```
+
+    then set `"SCOPUS_PROXY": "socks5h://127.0.0.1:1080"` in the server's `env`
+    block (`socks5h` resolves DNS through the tunnel too).
+
+`diagnose_connection` reports which route is entitling you
+(`entitlement_via`: `insttoken`, `proxy` or `network_ip`) and, when search
+fails, tells you whether to suspect the network, the proxy's exit IP, or a
+token that is not associated with your API key.
+
+### Store secrets in the OS secret store
+
+Elsevier requires an insttoken to be kept in a password-protected
+environment, and the Claude Desktop config file is plain text. The server
+therefore also reads both secrets from the OS secret store, under service
+`scopus-mcp` with account `insttoken` or `api_key`. Lookup order is
+environment variable, then secret store, then `config.json`.
+
+**macOS (Keychain).** `-w` given last with no value prompts for the secret,
+keeping it out of shell history:
+
+```bash
+security add-generic-password -U -s scopus-mcp -a insttoken -w
+```
+
+**Windows (Credential Manager).** `keyring` is installed with the server on
+Windows; the command prompts for the secret:
+
+```powershell
+uvx --from keyring keyring set scopus-mcp insttoken
+```
+
+**Linux (Secret Service).** Needs a desktop session with GNOME Keyring or
+KWallet. Install the server with the `keyring` extra (`uvx --from
+"scopus-mcp[keyring]" scopus-mcp`), then store the secret with the same
+`keyring set` command as on Windows.
+
+Repeat with account `api_key` to move the API key out of the config file too,
+then remove the values from the `env` block. Restart the MCP client afterwards:
+the server reads secrets once, at startup. `diagnose_connection` shows where
+each secret came from (`insttoken_source`: `env`, `keychain`, `keyring` or
+`config`), never the values.
+
+Alternatively, set the token in the `env` block of your Claude Desktop config
+(`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS,
+`%APPDATA%\Claude\claude_desktop_config.json` on Windows):
 
 ```json
 {
@@ -206,8 +261,8 @@ Set the token in the `env` block of your Claude Desktop config:
 }
 ```
 
-At startup the server logs whether a token is configured (never the token
-itself), so you can confirm the config took effect.
+At startup the server logs where the token came from and whether a proxy is
+set (never the values), so you can confirm the config took effect.
 
 ### Flaky networks
 
@@ -220,10 +275,12 @@ retried. Set `SCOPUS_MAX_RETRIES` to change the retry count (default `2`, i.e.
 
 ## Development
 
-Run tests with:
+Run the offline test suite with:
 ```bash
-pytest
+uv run --extra dev pytest
 ```
+CI runs it on Linux, macOS and Windows. Tests never touch your real secret
+store; the Windows Credential Manager round-trip test runs only on Windows.
 
 ## License
 

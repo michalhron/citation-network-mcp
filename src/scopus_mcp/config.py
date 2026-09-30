@@ -1,7 +1,11 @@
 import json
 import os
+import shutil
+import subprocess
+import sys
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Tuple
+from urllib.parse import urlsplit
 from dotenv import load_dotenv
 
 # Load environment variables from .env file if present
@@ -21,41 +25,157 @@ def load_config_file() -> Dict[str, Any]:
             return {}
     return {}
 
-def get_api_key() -> str:
-    """
-    Retrieves the API key with the following precedence:
-    1. Environment variable 'SCOPUS_API_KEY'
-    2. config.json 'api_key' field
-    """
-    # 1. Check Environment Variable
-    api_key = os.getenv('SCOPUS_API_KEY')
-    if api_key:
-        return api_key
+# OS secret-store service holding the secrets, one account per secret
+# ('api_key', 'insttoken').  Store them with, on macOS:
+#   security add-generic-password -U -s scopus-mcp -a insttoken -w
+# (-w last with no value prompts, keeping the secret out of shell history);
+# on Windows or Linux:
+#   keyring set scopus-mcp insttoken
+SECRET_SERVICE = 'scopus-mcp'
 
-    # 2. Check config.json
-    config = load_config_file()
-    api_key = config.get('api_key')
-    
+
+def secret_store_label() -> str:
+    """Source label reported by diagnostics for the platform's secret store."""
+    return 'keychain' if sys.platform == 'darwin' else 'keyring'
+
+
+def _macos_keychain_lookup(account: str) -> Optional[str]:
+    # The `security` CLI rather than the keyring library: an item created by
+    # `security add-generic-password` trusts that binary, so reading it back
+    # never raises a Keychain permission prompt.  Via keyring, the trusted app
+    # would be a Python interpreter whose path changes each time uvx rebuilds
+    # its environment, re-prompting after every upgrade.
+    security = shutil.which('security') or '/usr/bin/security'
+    try:
+        result = subprocess.run(
+            [security, 'find-generic-password',
+             '-s', SECRET_SERVICE, '-a', account, '-w'],
+            capture_output=True, text=True, timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip() or None
+
+
+def _keyring_lookup(account: str) -> Optional[str]:
+    # Windows Credential Manager (keyring is a dependency there) or, when the
+    # optional extra is installed, the Linux Secret Service.
+    try:
+        import keyring
+    except ImportError:
+        return None
+    try:
+        return keyring.get_password(SECRET_SERVICE, account) or None
+    except Exception:
+        # No backend (headless Linux), locked store, or backend failure.
+        return None
+
+
+def secret_store_lookup(account: str) -> Optional[str]:
+    """
+    Reads a secret from the OS secret store: the macOS login Keychain, the
+    Windows Credential Manager, or the Linux Secret Service.
+
+    Returns None when the store is unavailable, the item is missing, or on any
+    error, so a secret-store problem degrades to "not configured" instead of
+    crashing startup.  SCOPUS_DISABLE_SECRET_STORE=1 skips the lookup.  The
+    secret is never logged.
+    """
+    if os.getenv('SCOPUS_DISABLE_SECRET_STORE'):
+        return None
+    if sys.platform == 'darwin':
+        return _macos_keychain_lookup(account)
+    return _keyring_lookup(account)
+
+
+def _resolve(env_vars: Tuple[str, ...], account: str) -> Tuple[Optional[str], Optional[str]]:
+    for var in env_vars:
+        value = os.getenv(var)
+        if value:
+            return value, 'env'
+    value = secret_store_lookup(account)
+    if value:
+        return value, secret_store_label()
+    value = load_config_file().get(account)
+    if value:
+        return value, 'config'
+    return None, None
+
+
+def resolve_api_key() -> Tuple[Optional[str], Optional[str]]:
+    """
+    Returns (api_key, source), source being 'env', 'keychain' (macOS),
+    'keyring' (Windows/Linux) or 'config'.  Precedence:
+    1. Environment variable 'SCOPUS_API_KEY'
+    2. OS secret store, service 'scopus-mcp', account 'api_key'
+    3. config.json 'api_key' field
+    """
+    return _resolve(('SCOPUS_API_KEY',), 'api_key')
+
+
+def get_api_key() -> str:
+    """Retrieves the API key (see resolve_api_key for precedence)."""
+    api_key, _ = resolve_api_key()
     if not api_key:
         raise ValueError(
-            "Scopus API Key not found. Please set the 'SCOPUS_API_KEY' environment variable "
+            "Scopus API Key not found. Please set the 'SCOPUS_API_KEY' environment variable, "
+            "store it in the OS secret store (service 'scopus-mcp', account 'api_key'), "
             "or add 'api_key' to config.json."
         )
-        
     return api_key
 
+
+def resolve_insttoken() -> Tuple[Optional[str], Optional[str]]:
+    """
+    Returns (insttoken, source), labelled as in resolve_api_key.  Precedence:
+    1. Environment variable 'ELSEVIER_INSTTOKEN' or 'SCOPUS_INSTTOKEN'
+    2. OS secret store, service 'scopus-mcp', account 'insttoken'
+    3. config.json 'insttoken' field
+    Returns (None, None) when not configured.
+    """
+    return _resolve(('ELSEVIER_INSTTOKEN', 'SCOPUS_INSTTOKEN'), 'insttoken')
+
+
 def get_insttoken() -> Optional[str]:
+    """Retrieves the optional institutional token (see resolve_insttoken)."""
+    token, _ = resolve_insttoken()
+    return token
+
+
+PROXY_SCHEMES = ('http', 'https', 'socks5', 'socks5h')
+
+
+def get_proxy() -> Optional[str]:
     """
-    Retrieves the optional institutional token with the following precedence:
-    1. Environment variable 'SCOPUS_INSTTOKEN'
-    2. config.json 'insttoken' field
-    Returns None when not configured.
+    Retrieves the optional proxy for Elsevier API traffic:
+    1. Environment variable 'SCOPUS_PROXY'
+    2. config.json 'proxy' field
+
+    Routing only api.elsevier.com requests through a host on the
+    institutional network (e.g. `ssh -D 1080 host` then
+    'socks5h://127.0.0.1:1080') gives them an entitled IP without a full VPN.
+    OpenAlex, Crossref and Unpaywall calls are not proxied.
+
+    Raises ValueError for an unsupported scheme so a typo fails loudly at
+    startup instead of silently bypassing the proxy.
     """
-    token = os.getenv('ELSEVIER_INSTTOKEN') or os.getenv('SCOPUS_INSTTOKEN')
-    if token:
-        return token
-    config = load_config_file()
-    return config.get('insttoken') or None
+    proxy = os.getenv('SCOPUS_PROXY') or load_config_file().get('proxy')
+    if not proxy:
+        return None
+    scheme = urlsplit(proxy).scheme.lower()
+    if scheme not in PROXY_SCHEMES:
+        raise ValueError(
+            f"Unsupported SCOPUS_PROXY scheme {scheme!r}; "
+            f"use one of {', '.join(PROXY_SCHEMES)}."
+        )
+    return proxy
+
+
+def proxy_scheme(proxy: Optional[str]) -> Optional[str]:
+    """Scheme of a proxy URL, safe to report (host and credentials omitted)."""
+    return urlsplit(proxy).scheme.lower() if proxy else None
 
 
 DEFAULT_PAGE_SIZE = 25

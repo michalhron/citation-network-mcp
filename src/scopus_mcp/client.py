@@ -10,9 +10,12 @@ from urllib.parse import urljoin
 from .config import (
     get_api_key,
     get_cache_config,
-    get_insttoken,
     get_max_retries,
     get_page_size,
+    get_proxy,
+    proxy_scheme,
+    resolve_api_key,
+    resolve_insttoken,
 )
 from .cache import CacheManager
 from .utils import to_scopus_id, to_eid
@@ -30,7 +33,12 @@ ENTITLEMENT_400_STATUS_TEXT = "Error translating query"
 ENTITLEMENT_NOTE = (
     " Note: if your query is valid Scopus syntax, this error usually means "
     "the request lacks subscriber entitlement. Off-network access requires "
-    "the institutional VPN or SCOPUS_INSTTOKEN."
+    "the institutional VPN, SCOPUS_PROXY, or SCOPUS_INSTTOKEN."
+)
+INSTTOKEN_NOTE = (
+    " An insttoken is configured: Elsevier also rejects requests whose "
+    "insttoken is revoked or not associated with this API key, so the "
+    "token may be the cause rather than the key."
 )
 
 # Transport failures worth retrying; other request errors are deterministic.
@@ -55,27 +63,33 @@ class ScopusClient:
         self.cache_config = get_cache_config()
         # Per-request page size for search_all; 25 by default (see get_page_size).
         self.page_size = get_page_size()
-        insttoken = get_insttoken()
+        insttoken, self.insttoken_source = resolve_insttoken()
+        self.has_insttoken = bool(insttoken)
+        # Proxy applies to api.elsevier.com only; it is how an off-network
+        # machine borrows an institutional IP without a full VPN.
+        self.proxy = get_proxy()
         self.max_retries = get_max_retries()
         self.headers = {
             'X-ELS-APIKey': self.api_key,
             'Accept': 'application/json',
-            'User-Agent': 'ScopusMCP/0.8.0',
+            'User-Agent': 'ScopusMCP/0.8.1',
         }
         if insttoken:
             self.headers['X-ELS-Insttoken'] = insttoken
-            logger.info("Scopus client ready (insttoken: configured)")
-        else:
-            logger.info(
-                "Scopus client ready (insttoken: not set, subscriber "
-                "features require institutional network)"
-            )
+        # Log where credentials came from, never their values.
+        logger.info(
+            "Scopus client ready (insttoken: %s, proxy: %s)",
+            f"from {self.insttoken_source}" if insttoken
+            else "not set, subscriber features require institutional network",
+            proxy_scheme(self.proxy) or "none",
+        )
         # Initialize CacheManager with default expiration
         self.cache = CacheManager(expiration_seconds=self.cache_config['default'])
         self.client = httpx.AsyncClient(
             headers=self.headers,
             timeout=30.0,
-            follow_redirects=True
+            follow_redirects=True,
+            proxy=self.proxy,
         )
         self.quota_info = {} # Store latest quota headers
 
@@ -185,6 +199,8 @@ class ScopusClient:
                         msg = "Authentication failed: Invalid API Key"
                     if quota_str:
                         msg += f" Quota/rate headers: [{quota_str}]"
+                    if self.has_insttoken:
+                        msg += INSTTOKEN_NOTE
                     raise Exception(msg) from e
                 elif status == 404:
                     logger.info(f"Resource not found: {url}")
@@ -497,8 +513,9 @@ class ScopusClient:
         """
         Retrieve the ScienceDirect full-text-retrieval-response for a DOI.
         Returns None when the caller lacks entitlement (401/403) or the article
-        is not on ScienceDirect (404).  Requires SCOPUS_INSTTOKEN to be set for
-        most full-text content; without it the response is typically abstract-only.
+        is not on ScienceDirect (404).  Off-network, requires SCOPUS_INSTTOKEN or
+        SCOPUS_PROXY for most full-text content; without either the response is
+        typically abstract-only.
         Endpoint: content/article/doi/{doi}
         """
         try:
@@ -522,33 +539,37 @@ class ScopusClient:
         """
         report: Dict[str, Any] = {}
 
-        # 1. Config (no network): presence only, never values.
-        try:
-            get_api_key()
-            api_key_present = True
-        except ValueError:
-            api_key_present = False
+        # 1. Config (no network): presence and source only, never values.
+        # Reflects what this running client uses, so a token added to the
+        # Keychain after startup shows as absent until the server restarts.
+        _, api_key_source = resolve_api_key()
         report['config'] = {
-            'api_key_present': api_key_present,
-            'insttoken_present': bool(get_insttoken()),
+            'api_key_present': bool(self.api_key),
+            'api_key_source': api_key_source,
+            'insttoken_present': self.has_insttoken,
+            'insttoken_source': self.insttoken_source,
+            'proxy': proxy_scheme(self.proxy),
         }
 
         # 2. Reachability: any HTTP status counts as reachable; only
-        # transport errors/timeouts do not.
+        # transport errors/timeouts do not.  Behind a proxy the direct TCP
+        # probe would time a path requests never take, so it is skipped.
         reachability: Dict[str, Any] = {
             'reachable': False,
             'connect_seconds': None,
             'total_seconds': None,
+            'via_proxy': bool(self.proxy),
         }
-        try:
-            start = time.monotonic()
-            _, writer = await asyncio.wait_for(
-                asyncio.open_connection('api.elsevier.com', 443), timeout=8.0
-            )
-            reachability['connect_seconds'] = round(time.monotonic() - start, 3)
-            writer.close()
-        except Exception:
-            pass
+        if not self.proxy:
+            try:
+                start = time.monotonic()
+                _, writer = await asyncio.wait_for(
+                    asyncio.open_connection('api.elsevier.com', 443), timeout=8.0
+                )
+                reachability['connect_seconds'] = round(time.monotonic() - start, 3)
+                writer.close()
+            except Exception:
+                pass
         try:
             start = time.monotonic()
             await self.client.get(BASE_URL, timeout=8.0)
@@ -598,8 +619,26 @@ class ScopusClient:
             search['detail'] = msg[:300]
         report['search'] = search
 
+        report['entitlement_via'] = self._entitlement_route(report)
         report['verdict'] = self._build_verdict(report)
         return report
+
+    @staticmethod
+    def _entitlement_route(report: Dict[str, Any]) -> Optional[str]:
+        """Names the configured route that entitles search, if search works.
+
+        Elsevier does not say which credential it honoured, so this reports
+        the strongest configured route: an insttoken works from anywhere, a
+        proxy lends an institutional IP, otherwise it is this machine's IP.
+        """
+        if report['search']['status'] != 'ok':
+            return None
+        config = report.get('config', {})
+        if config.get('insttoken_present'):
+            return 'insttoken'
+        if config.get('proxy'):
+            return 'proxy'
+        return 'network_ip'
 
     @staticmethod
     def _build_verdict(report: Dict[str, Any]) -> str:
@@ -608,14 +647,35 @@ class ScopusClient:
         search = report['search']['status']
         reachability = report['reachability']
 
+        config = report.get('config', {})
         if 'auth_failed' in (metadata, search):
             verdict = "API key rejected; check SCOPUS_API_KEY."
+            if config.get('insttoken_present'):
+                verdict += (
+                    " An insttoken is also configured; a revoked token, or one "
+                    "not associated with this API key, fails the same way. "
+                    "Remove it temporarily to tell the two apart."
+                )
+        elif search == 'entitlement_missing' and metadata == 'ok' and config.get('insttoken_present'):
+            verdict = (
+                "An insttoken is configured but Scopus Search still lacks "
+                "subscriber entitlement. The token is probably not associated "
+                "with this API key, or has been revoked; ask Elsevier support "
+                "to link it to the key."
+            )
+        elif search == 'entitlement_missing' and metadata == 'ok' and config.get('proxy'):
+            verdict = (
+                "Requests go through SCOPUS_PROXY but Scopus Search lacks "
+                "subscriber entitlement. The proxy's exit IP is not in your "
+                "institution's subscribed range, or the tunnel is down."
+            )
         elif search == 'entitlement_missing' and metadata == 'ok':
             verdict = (
                 "API key authenticates but Scopus Search lacks subscriber "
                 "entitlement. You are likely off your institution's network. "
-                "Connect the institutional VPN or set SCOPUS_INSTTOKEN "
-                "(request an institutional token from Elsevier developer support)."
+                "Connect the institutional VPN, route Elsevier traffic through "
+                "an on-campus host with SCOPUS_PROXY, or set SCOPUS_INSTTOKEN "
+                "(request an institutional token via your library / Elsevier support)."
             )
         elif metadata == 'ok' and search == 'ok':
             verdict = "Connection and entitlement healthy."
@@ -628,7 +688,13 @@ class ScopusClient:
             )
 
         connect = reachability.get('connect_seconds')
-        if reachability['reachable'] and (connect is None or connect > 2.0):
+        if reachability.get('via_proxy'):
+            # No direct TCP probe behind a proxy; judge by the full request.
+            total = reachability.get('total_seconds')
+            degraded = reachability['reachable'] and (total is None or total > 4.0)
+        else:
+            degraded = reachability['reachable'] and (connect is None or connect > 2.0)
+        if degraded:
             verdict += (
                 " Network path to api.elsevier.com is degraded; retries "
                 "are enabled but expect failures."

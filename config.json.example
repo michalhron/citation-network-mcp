@@ -1,6 +1,7 @@
 {
   "api_key": "YOUR_SCOPUS_API_KEY_HERE",
   "insttoken": "",
+  "proxy": "",
   "page_size": 25,
   "cache_ttl_search": 3600,
   "cache_ttl_abstract": 2592000,

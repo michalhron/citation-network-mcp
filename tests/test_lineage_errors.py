@@ -186,7 +186,7 @@ class TestRetryAndAuthBehavior(unittest.IsolatedAsyncioTestCase):
 
     def _make_client(self):
         with patch('scopus_mcp.client.get_api_key', return_value='fake_key'), \
-             patch('scopus_mcp.client.get_insttoken', return_value=None), \
+             patch('scopus_mcp.client.resolve_insttoken', return_value=(None, None)), \
              patch('scopus_mcp.client.get_cache_config',
                    return_value={'default': 3600, 'search': 1800, 'abstract': 7200}), \
              patch('scopus_mcp.client.CacheManager'):

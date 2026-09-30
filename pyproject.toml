@@ -1,6 +1,6 @@
 [project]
 name = "scopus-mcp"
-version = "0.8.0"
+version = "0.8.1"
 description = "A Model Context Protocol server for the Elsevier Scopus API"
 readme = "README.md"
 authors = [
@@ -9,12 +9,16 @@ authors = [
 ]
 requires-python = ">=3.10"
 dependencies = [
-    "httpx>=0.27.0",
+    "httpx[socks]>=0.27.0",
     "mcp>=1.0,<2",
     "python-dotenv>=1.0.0",
     "matplotlib>=3.8.0",
     "networkx>=3.2.0",
-    "pymupdf>=1.23.0"
+    "pymupdf>=1.23.0",
+    # Windows Credential Manager access for SCOPUS_API_KEY / insttoken.
+    # macOS uses the built-in `security` CLI instead; Linux opts in via
+    # the 'keyring' extra (Secret Service needs a desktop session).
+    "keyring>=24; sys_platform == 'win32'"
 ]
 
 [project.urls]
@@ -24,6 +28,9 @@ Repository = "https://github.com/qwe4559999/scopus-mcp"
 Issues = "https://github.com/qwe4559999/scopus-mcp/issues"
 
 [project.optional-dependencies]
+keyring = [
+    "keyring>=24"
+]
 dev = [
     "pytest>=7.4.0",
     "pytest-mock>=3.11.1"

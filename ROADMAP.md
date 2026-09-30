@@ -75,7 +75,7 @@ Every new tool gets a live smoke test before it is trusted (see Lessons).
       credited.
 - [ ] Detach the repository from upstream's fork network (GitHub settings,
       Michal).
-- [ ] Configure the PyPI trusted publisher (Michal), then tag v0.11.0.
+- [x] PyPI trusted publisher configured; v0.11.0 tagged (2026-09-30).
 - [x] `publish.yml` publishes to PyPI (trusted publishing) and the MCP
       registry on version tags, under the new name.
 - [ ] Split `server.py` and `utils.py` (1,200+ lines each) into tool modules.
@@ -83,9 +83,9 @@ Every new tool gets a live smoke test before it is trusted (see Lessons).
 - [x] Dropped README_CN and the Chinese prompt guide; English examples in
       `docs/examples.md`.
 - [x] Claude Desktop extension and Claude Code plugin (0.10.0).
-- [ ] First PyPI and MCP registry release (v0.11.0), then switch install
-      instructions and the Claude Code plugin from GitHub to `uvx
-      citation-network-mcp`.
+- [x] First PyPI and MCP registry release: citation-network-mcp 0.11.0
+      (2026-09-30); install instructions and the Claude Code plugin use
+      `uvx citation-network-mcp`.
 
 ## Phase 3 — Research pipeline
 

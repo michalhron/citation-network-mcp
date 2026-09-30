@@ -109,7 +109,7 @@ Every new tool gets a live smoke test before it is trusted (see Lessons).
 - [x] Repository, package, extension, plugin and registry entry renamed;
       `citation-network-mcp` and `scopus-mcp` commands kept as aliases.
 - [x] PyPI pending publisher for `scopus-plus-mcp` (Michal), then tag v0.16.0.
-- [ ] Switch Claude Desktop to `uvx scopus-plus-mcp@latest` after release.
+- [x] Switch Claude Desktop to `uvx scopus-plus-mcp@latest` after release.
 
 ## Network audit (0.17.0, 2026-09-30)
 

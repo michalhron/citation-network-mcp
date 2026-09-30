@@ -18,6 +18,9 @@ Corrections are welcome as issues.
 | **Bibliometrics and records** | | | | | | |
 | Publications per year | ✓ | — | — | — | ✓ | ✓ |
 | Journal metrics (SJR, SNIP, CiteScore) | ✓ | — | ✓ | ✓ | — | — |
+| Journal percentile and quartile per subject category | ✓ | — | — | — | — | — |
+| Journals above a percentile cut-off in chosen categories | ✓ | — | — | — | — | — |
+| Topic landscape: fields and journal quartiles for a query | ✓ | — | — | — | — | — |
 | BibTeX export | ✓ | — | ✓ | — | — | — |
 | Full text (ScienceDirect, open access) | ✓ | — | ✓ | ✓ | — | — |
 | Full-text search (ScienceDirect) | ✓ | — | ✓ | — | — | — |
@@ -31,7 +34,7 @@ Corrections are welcome as issues.
 | Test functions | 167 | 5 | 10 | 0 | 156 | 6 |
 | CI on Linux, macOS and Windows | ✓ | — | — | — | — | — |
 | **Project** | | | | | | |
-| Tools | 19 | 5 | 25 | 13 | 12 | 6 |
+| Tools | 21 | 5 | 25 | 13 | 12 | 6 |
 | Commits | 85 | 45 | 5 | 7 | 12 | 6 |
 | Last commit | 2026-09 | 2026-05 | 2026-05 | 2026-06 | 2026-04 | 2026-05 |
 
@@ -48,6 +51,12 @@ Corrections are welcome as issues.
   multi-generation citation lineage and extracts its main path
   (search-path-count, Batagelj 2003). Networks come out as GraphML for
   VOSviewer, Gephi or Pajek.
+- **Review scoping by field and prestige.** It is the only one that reports
+  journal percentiles per subject category, lists the journals above a
+  percentile cut-off in chosen categories as a ready Scopus query, and maps
+  where a topic is published and in which quartile per field.
+- **Full-text engagement.** Besides searching full text, it counts how often
+  and where each article uses a term, separating use from citation.
 - **Two data sources.** Everything from search to lineage also runs on
   OpenAlex, so it works without a Scopus subscription, with the coverage
   differences [measured and documented](data-sources.md).

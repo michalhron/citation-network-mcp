@@ -5,7 +5,20 @@ are pushed yet (see "Release process" in ROADMAP.md).
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-09-30
+
 ### Added
+- `get_journal_metrics` reports each journal's CiteScore percentile, rank and
+  quartile in every subject category it belongs to, from the latest complete
+  CiteScore year, and its best quartile.
+- `find_journals`: journals in chosen ASJC categories (names or codes) at or
+  above a percentile in that category (Q1 = 75, top 10% = 90), with CSV and
+  ready `SRCID(...)` query fragments for scoping a review. Ambiguous category
+  names return the candidates.
+- `topic_landscape`: for a Scopus query, papers per broad subject area over
+  all results, and per subject category the papers in Q1, Q2, Q3 and Q4
+  journals of that category, the main journals, and the share in unranked
+  venues such as conference proceedings.
 - `search_fulltext`: full-text search of Elsevier (ScienceDirect) articles,
   paged up to 1,000 results. With `context=true` it retrieves the top
   results' full texts and reports body mentions separately from the

@@ -87,6 +87,15 @@ Every new tool gets a live smoke test before it is trusted (see Lessons).
       (2026-09-30); install instructions and the Claude Code plugin use
       `uvx citation-network-mcp`.
 
+## Phase 1b — Review scoping and full text (0.12.0, 2026-09-30)
+
+- [x] `search_fulltext`: ScienceDirect full-text search with mention
+      analysis (body vs reference list, positions, sentences).
+- [x] Category percentiles in `get_journal_metrics`; `find_journals` for
+      percentile cut-offs; `topic_landscape` for where and at what quartile a
+      topic is published. Live, "organizing vision": 140 papers, Information
+      Systems 37 (30 in Q1), 46% in unranked venues (AMCIS/ICIS proceedings).
+
 ## Phase 3 — Research pipeline
 
 Orchestrator skill (Session D below) and the lineage-model ideas. Mostly

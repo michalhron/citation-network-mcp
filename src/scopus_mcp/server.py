@@ -36,7 +36,7 @@ from .utils import (
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("scopus-mcp")
 
-SERVER_VERSION = "0.8.0"
+SERVER_VERSION = "0.8.1"
 
 # Initialize Server
 server = Server("scopus-mcp")

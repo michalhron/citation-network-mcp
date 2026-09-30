@@ -76,6 +76,7 @@ def clean_serial_entry(entry: Dict[str, Any], names: Optional[Dict[str, str]] = 
         'subject_areas': [s.get('$') for s in subjects if isinstance(s, dict) and s.get('$')],
         'coverage': (f"{entry.get('coverageStartYear')}-{entry.get('coverageEndYear')}"
                      if entry.get('coverageStartYear') else None),
+        'venue_type': venue_type(entry.get('prism:aggregationType')),
         'percentile_year': ranks['year'],
         'category_percentiles': ranks['ranks'],
         'best_quartile': ranks['ranks'][0]['quartile'] if ranks['ranks'] else None,
@@ -114,6 +115,24 @@ def clean_openalex_source(source: Dict[str, Any]) -> Dict[str, Any]:
 # to. A journal can be Q1 in one category and Q3 in another, so quartiles are
 # always reported per category. The latest *complete* CiteScore year is used;
 # the current year's "In-Progress" tracker changes monthly.
+
+VENUE_TYPES = {
+    'journal': 'journal',
+    'conferenceproceeding': 'conference proceedings',
+    'bookseries': 'book series',
+    'book': 'book',
+    'tradejournal': 'trade journal',
+}
+
+
+def venue_type(aggregation_type: Optional[str]) -> str:
+    """Normalise Scopus aggregation types: Serial Title says 'conferenceproceeding',
+    search records say 'Conference Proceeding'. Proceedings series such as
+    IFAC-PapersOnLine or Procedia CIRP carry CiteScore ranks too, which is why
+    rank alone does not mean journal."""
+    key = (aggregation_type or '').lower().replace(' ', '')
+    return VENUE_TYPES.get(key, 'other') if key else 'other'
+
 
 def quartile(percentile: Optional[float]) -> Optional[str]:
     """Q1 = 75th percentile and up, Q2 = 50-74, Q3 = 25-49, Q4 = below 25."""

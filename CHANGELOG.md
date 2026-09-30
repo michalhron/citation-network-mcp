@@ -5,6 +5,22 @@ are pushed yet (see "Release process" in ROADMAP.md).
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-09-30
+
+### Changed
+- `topic_landscape` counts only journal papers in its Q1-Q4 figures by
+  default (`journals_only=true`). Proceedings series such as
+  IFAC-PapersOnLine and Procedia CIRP, and book series such as IFIP AICT,
+  also carry CiteScore ranks and had been counted as if they were journals.
+  They are now reported per category as `ranked_non_journal` with their
+  main venues. `journals_only=false` restores the old counting.
+
+### Added
+- `topic_landscape` reports the venue mix of the analysed papers (journal,
+  conference proceedings, book series, book, unranked journal) and labels
+  every venue with its type.
+- `get_journal_metrics` reports each title's venue type.
+
 ## [0.12.0] - 2026-09-30
 
 ### Added

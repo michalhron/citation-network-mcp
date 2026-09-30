@@ -96,6 +96,12 @@ Every new tool gets a live smoke test before it is trusted (see Lessons).
       topic is published. Live, "organizing vision": 140 papers, Information
       Systems 37 (30 in Q1), 46% in unranked venues (AMCIS/ICIS proceedings).
 
+- [x] Venue types in `topic_landscape` (0.13.0): quartiles count journals
+      only by default. Live, manufacturing-as-a-service: 35% of papers are
+      journal articles, 43% conference proceedings, 18% book series; Control
+      and Systems Engineering went from 18% Q1 (all ranked venues) to 64% Q1
+      (journals only, 37 papers in proceedings and book series).
+
 ## Phase 3 — Research pipeline
 
 Orchestrator skill (Session D below) and the lineage-model ideas. Mostly

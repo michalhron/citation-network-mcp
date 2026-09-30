@@ -2,7 +2,7 @@
   "manifest_version": "0.4",
   "name": "citation-network-mcp",
   "display_name": "Citation Network MCP",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "description": "Citation-network analysis on Scopus or OpenAlex: search, citations, coupling, co-citation, lineages, bibliometrics.",
   "long_description": "Search the literature, trace who cites whom across generations, map research fronts and intellectual bases, and get publication counts, journal metrics and BibTeX. Scopus by default; OpenAlex needs no subscription.",
   "author": {

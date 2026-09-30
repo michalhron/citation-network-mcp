@@ -8,6 +8,7 @@ import pytest
 
 from scopus_mcp.client import ScopusClient
 from scopus_mcp.journals import (
+    venue_type,
     category_names,
     clean_serial_entry,
     quartile,
@@ -231,9 +232,9 @@ def test_topic_landscape_counts_papers_per_category_quartile(tmp_path):
     # The same Weak J paper is Q1 in 1404 (80th): quartiles are per category.
     assert by_code['1404']['Q1'] == 3
     assert by_code['1710']['top_journals'][0] == {
-        'journal': 'MIS Quarterly', 'quartile': 'Q1', 'percentile': 90, 'papers': 2}
+        'journal': 'MIS Quarterly', 'type': 'journal', 'quartile': 'Q1', 'percentile': 90, 'papers': 2}
     assert out['unranked'] == {'papers': 1, 'share': 0.25,
-                               'top_venues': [{'venue': 'AMCIS 2013', 'papers': 1}]}
+                               'top_venues': [{'venue': 'AMCIS 2013', 'type': 'other', 'papers': 1}]}
     assert out['csv_path'].endswith('.csv')
 
 
@@ -247,3 +248,69 @@ def test_topic_landscape_reports_sample_coverage():
     out = _call('topic_landscape', {'query': 'x', 'max_papers': 10}, scopus)
     assert out['coverage'] == 'most recent 10 of 1000 (1%)'
     assert scopus.search_all.await_args.kwargs['max_results'] == 10
+
+
+
+# ---------------------------------------------------------------------------
+# Venue types: ranked proceedings series are not journals
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize('raw,expected', [
+    ('journal', 'journal'), ('Journal', 'journal'),
+    ('conferenceproceeding', 'conference proceedings'), ('Conference Proceeding', 'conference proceedings'),
+    ('bookseries', 'book series'), ('Book Series', 'book series'), ('Book', 'book'),
+    ('Trade Journal', 'trade journal'), ('Magazine', 'other'), (None, 'other'), ('', 'other'),
+])
+def test_venue_type(raw, expected):
+    assert venue_type(raw) == expected
+
+
+def test_clean_serial_entry_reports_venue_type():
+    assert clean_serial_entry(MISQ)['venue_type'] == 'journal'
+
+
+def _landscape_with_ifac(journals_only):
+    ifac = _journal('IFAC-PapersOnLine', '777', '2405-8963',
+                    [_year(2025, 'Complete', [('2207', 150, 40)])], agg='conferenceproceeding')
+    scopus = MagicMock()
+    scopus.search_facets = AsyncMock(return_value={'search-results': {'opensearch:totalResults': '3'}})
+    scopus.search_all = AsyncMock(return_value={'search-results': {'entry': [
+        dict(_paper('777', '24058963', 'IFAC Papersonline'), **{'prism:aggregationType': 'Conference Proceeding'}),
+        dict(_paper('777', '24058963', 'IFAC Papersonline'), **{'prism:aggregationType': 'Conference Proceeding'}),
+        dict(_paper('12402', '02767783', 'MIS Quarterly'), **{'prism:aggregationType': 'Journal'}),
+    ]}})
+    scopus.asjc_categories = AsyncMock(return_value=ASJC)
+    scopus.serial_titles = AsyncMock(return_value=[MISQ, ifac])
+    args = {'query': 'x'} if journals_only is None else {'query': 'x', 'journals_only': journals_only}
+    return _call('topic_landscape', args, scopus)
+
+
+def test_topic_landscape_journals_only_by_default():
+    out = _landscape_with_ifac(None)
+    ifac_cat = next(c for c in out['categories'] if c['code'] == '2207')
+    assert (ifac_cat['papers'], ifac_cat['Q3'], ifac_cat['ranked_non_journal']) == (0, 0, 2)
+    assert ifac_cat['top_non_journal'] == [{'venue': 'IFAC Papersonline',
+                                            'type': 'conference proceedings', 'quartile': 'Q3', 'papers': 2}]
+    assert out['quartiles_count'] == 'journal papers only'
+    assert out['venue_mix'] == {'conference proceedings': {'papers': 2, 'share': 0.67},
+                                'journal': {'papers': 1, 'share': 0.33}}
+
+
+def test_topic_landscape_can_count_all_ranked_venues():
+    out = _landscape_with_ifac(False)
+    ifac_cat = next(c for c in out['categories'] if c['code'] == '2207')
+    assert (ifac_cat['papers'], ifac_cat['Q3'], ifac_cat['ranked_non_journal']) == (2, 2, 0)
+    assert ifac_cat['top_journals'][0]['type'] == 'conference proceedings'
+    assert 'top_non_journal' not in ifac_cat
+    assert out['quartiles_count'] == 'all ranked venues'
+
+
+def test_topic_landscape_marks_unranked_journals_in_mix():
+    scopus = MagicMock()
+    scopus.search_facets = AsyncMock(return_value={'search-results': {'opensearch:totalResults': '1'}})
+    scopus.search_all = AsyncMock(return_value={'search-results': {'entry': [
+        dict(_paper('888', '11112222', 'Brand New Journal'), **{'prism:aggregationType': 'Journal'})]}})
+    scopus.asjc_categories = AsyncMock(return_value=ASJC)
+    scopus.serial_titles = AsyncMock(return_value=[])
+    out = _call('topic_landscape', {'query': 'x'}, scopus)
+    assert out['venue_mix'] == {'journal (unranked)': {'papers': 1, 'share': 1.0}}

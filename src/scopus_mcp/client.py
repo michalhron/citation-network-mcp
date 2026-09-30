@@ -49,6 +49,12 @@ RETRYABLE_TRANSPORT_ERRORS = (
     httpx.RemoteProtocolError,
 )
 
+# The REF view returns at most this many references per response.
+REF_PAGE = 40
+# Upper bound on REF pages per document (2,000 references).
+REF_MAX_PAGES = 50
+REF_RANGE_ERROR = "'startref' or 'refcount' parameter missing or invalid"
+
 # Stable, existing record used by diagnose_connection as a metadata canary.
 CANARY_SCOPUS_ID = "85007305299"
 CANARY_QUERY = "ALL(gene)"
@@ -375,15 +381,57 @@ class ScopusClient:
 
         Note: the REF view requires an entitled (subscriber) key; an
         unentitled key returns 403, surfaced as an error by _request.
-        Deeper paging of long reference lists uses the 'startref' parameter.
+
+        The REF view returns REF_PAGE references per response, whatever the
+        list length, so this pages with 'startref'/'refcount' until
+        '@total-references' is reached and merges every page into the first
+        response. Without it, long reference lists were silently cut at 40.
         """
-        params = {'view': 'REF'}
-        return await self._request(
-            'GET',
-            f"content/abstract/scopus_id/{to_scopus_id(scopus_id)}",
-            params,
-            ttl=self.cache_config['abstract'],
-        )
+        endpoint = f"content/abstract/scopus_id/{to_scopus_id(scopus_id)}"
+        ttl = self.cache_config['abstract']
+        data = await self._request('GET', endpoint, {'view': 'REF'}, ttl=ttl)
+        refs_block = ((data.get('abstracts-retrieval-response') or {})
+                      .get('references'))
+        if not isinstance(refs_block, dict):
+            return data
+        refs = refs_block.get('reference') or []
+        if isinstance(refs, dict):
+            refs = [refs]
+        try:
+            total = int(refs_block.get('@total-references') or 0)
+        except (TypeError, ValueError):
+            total = 0
+        pages = 1
+        shrunk = False
+        while len(refs) < total and pages < REF_MAX_PAGES:
+            # refcount past the end of the list is a 400, so the last page
+            # asks for the remainder only.
+            try:
+                page = await self._request(
+                    'GET', endpoint,
+                    {'view': 'REF', 'startref': len(refs) + 1,
+                     'refcount': min(REF_PAGE, total - len(refs))},
+                    ttl=ttl,
+                )
+            except Exception as exc:
+                # Scopus can report one more reference than it serves
+                # (@total-references 172, last retrievable 171), so a page
+                # reaching the phantom entry 400s. Retry once, one shorter.
+                if shrunk or REF_RANGE_ERROR not in str(exc):
+                    raise
+                shrunk = True
+                total -= 1
+                continue
+            more = (((page.get('abstracts-retrieval-response') or {})
+                     .get('references') or {}).get('reference') or [])
+            if isinstance(more, dict):
+                more = [more]
+            if not more:
+                break
+            refs.extend(more)
+            pages += 1
+        refs_block['reference'] = refs
+        return data
 
     async def search_all(self, query: str, max_results: int = 200, sort: str = 'coverDate') -> Dict[str, Any]:
         """

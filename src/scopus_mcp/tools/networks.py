@@ -9,7 +9,7 @@ from ..output import _query_slug
 from ..records import clean_abstract_details, clean_references, clean_search_results, to_eid, to_scopus_id
 from .common import SOURCE_SCHEMA, _resolve_openalex_work, _source, server_module
 
-logger = logging.getLogger("citation-network-mcp")
+logger = logging.getLogger("scopus-plus-mcp")
 
 
 async def _openalex_seed_sets(seed_ids: list, mode: str, max_citing: int = 500):

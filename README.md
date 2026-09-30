@@ -1,11 +1,11 @@
-# Citation Network MCP
+# Scopus Plus MCP
 
-<!-- mcp-name: io.github.michalhron/citation-network-mcp -->
+<!-- mcp-name: io.github.michalhron/scopus-plus-mcp -->
 
-**Citation-network analysis for Claude and other AI assistants, on Scopus or OpenAlex.**
+**The Scopus MCP server that goes further: search, full text, citation networks, journal quality and bibliometrics, for Claude and other AI assistants.**
 
-[![Tests](https://github.com/michalhron/citation-network-mcp/actions/workflows/test.yml/badge.svg)](https://github.com/michalhron/citation-network-mcp/actions/workflows/test.yml)
-[![PyPI](https://img.shields.io/pypi/v/citation-network-mcp)](https://pypi.org/project/citation-network-mcp/)
+[![Tests](https://github.com/michalhron/scopus-plus-mcp/actions/workflows/test.yml/badge.svg)](https://github.com/michalhron/scopus-plus-mcp/actions/workflows/test.yml)
+[![PyPI](https://img.shields.io/pypi/v/scopus-plus-mcp)](https://pypi.org/project/scopus-plus-mcp/)
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 
@@ -59,16 +59,16 @@ You need an API key from the [Elsevier Developer Portal](https://dev.elsevier.co
 (register with your institutional email). OpenAlex needs no key.
 
 **Claude Desktop** — one click:
-1. Download `citation-network-mcp-<version>.mcpb` from the
-   [latest release](https://github.com/michalhron/citation-network-mcp/releases/latest).
+1. Download `scopus-plus-mcp-<version>.mcpb` from the
+   [latest release](https://github.com/michalhron/scopus-plus-mcp/releases/latest).
 2. Open it (or drag it into *Settings → Extensions*), click **Install**, and
    paste your API key when asked. Claude stores it securely.
 
 **Claude Code** — two commands:
 
 ```bash
-claude plugin marketplace add michalhron/citation-network-mcp
-claude plugin install citation-network-mcp@michalhron
+claude plugin marketplace add michalhron/scopus-plus-mcp
+claude plugin install scopus-plus-mcp@michalhron
 ```
 
 Then make your key available, either in your shell
@@ -80,9 +80,9 @@ Then make your key available, either in your shell
 ```json
 {
   "mcpServers": {
-    "citation-network": {
+    "scopus-plus": {
       "command": "uvx",
-      "args": ["citation-network-mcp"],
+      "args": ["scopus-plus-mcp"],
       "env": { "SCOPUS_API_KEY": "YOUR_KEY" }
     }
   }
@@ -106,10 +106,14 @@ tells you which tools your Scopus access supports.
 
 ## Origins
 
-Formerly `michalhron/scopus-mcp`. This project began as a fork of
+Formerly `citation-network-mcp` (and before that `michalhron/scopus-mcp`). This project began as a fork of
 [qwe4559999/scopus-mcp](https://github.com/qwe4559999/scopus-mcp) by
 [thinktraveller](https://github.com/thinktraveller) and
 [qwe4559999](https://github.com/qwe4559999), which provides Scopus search,
 abstracts, author profiles and citing papers. Everything since version 0.2
 was developed here by [Michal Hron](https://github.com/michalhron). MIT
 licensed; see [LICENSE](LICENSE).
+
+Scopus and ScienceDirect are trademarks of Elsevier B.V. This project is
+independent and not affiliated with or endorsed by Elsevier; it uses their
+public APIs with your own key and subscription.

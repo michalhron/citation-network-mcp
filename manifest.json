@@ -1,21 +1,21 @@
 {
   "manifest_version": "0.4",
-  "name": "citation-network-mcp",
-  "display_name": "Citation Network MCP",
-  "version": "0.15.0",
-  "description": "Citation-network analysis on Scopus or OpenAlex: search, citations, coupling, co-citation, lineages, bibliometrics.",
-  "long_description": "Search the literature, trace who cites whom across generations, map research fronts and intellectual bases, and get publication counts, journal metrics and BibTeX. Scopus by default; OpenAlex needs no subscription.",
+  "name": "scopus-plus-mcp",
+  "display_name": "Scopus Plus MCP",
+  "version": "0.16.0",
+  "description": "Scopus and more: search, full text, citation networks, journal quality and bibliometrics; OpenAlex without a subscription.",
+  "long_description": "Search Scopus and ScienceDirect full text, trace citation lineages, map coupling and co-citation networks, scope reviews by field and journal quartile, and get counts, metrics and BibTeX. OpenAlex covers the same analyses without a Scopus subscription. Not affiliated with Elsevier.",
   "author": {
     "name": "Michal Hron",
     "url": "https://github.com/michalhron"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/michalhron/citation-network-mcp"
+    "url": "https://github.com/michalhron/scopus-plus-mcp"
   },
-  "homepage": "https://github.com/michalhron/citation-network-mcp",
-  "documentation": "https://github.com/michalhron/citation-network-mcp#readme",
-  "support": "https://github.com/michalhron/citation-network-mcp/issues",
+  "homepage": "https://github.com/michalhron/scopus-plus-mcp",
+  "documentation": "https://github.com/michalhron/scopus-plus-mcp#readme",
+  "support": "https://github.com/michalhron/scopus-plus-mcp/issues",
   "icon": "assets/icon.png",
   "server": {
     "type": "uv",
@@ -26,7 +26,7 @@
         "run",
         "--directory",
         "${__dirname}",
-        "citation-network-mcp"
+        "scopus-plus-mcp"
       ],
       "env": {
         "SCOPUS_API_KEY": "${user_config.scopus_api_key}",

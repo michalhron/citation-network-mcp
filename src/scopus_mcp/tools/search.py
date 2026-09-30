@@ -13,7 +13,7 @@ from ..output import should_write_to_disk, write_fulltext_to_disk, write_results
 from ..records import _fetch_abstract_crossref, _fetch_abstract_openalex, clean_abstract_details, clean_author_profile, clean_identifiers, clean_search_results, detect_id_type
 from .common import SOURCE_SCHEMA, _source, server_module
 
-logger = logging.getLogger("citation-network-mcp")
+logger = logging.getLogger("scopus-plus-mcp")
 
 
 # Cap on authors per search_authors call (Scopus Author Search page size).

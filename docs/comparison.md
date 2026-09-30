@@ -73,7 +73,7 @@ Corrections are welcome as issues.
 - **Breadth of Elsevier APIs.** scopus-mcp-extended covers 25 endpoints,
   including PlumX altmetrics, Embase and affiliation search.
 - **Docker.** strato ships a Docker image; this project installs from PyPI
-  (`uvx citation-network-mcp`), as a Claude Desktop extension or as a Claude
+  (`uvx scopus-plus-mcp`), as a Claude Desktop extension or as a Claude
   Code plugin, and is listed in the official MCP registry.
 - **Workflow-shaped tools.** strato wraps common questions ("find experts",
   "compare documents") in single tools.

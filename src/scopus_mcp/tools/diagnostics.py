@@ -69,7 +69,7 @@ async def _get_server_info(arguments: dict) -> list:
     return [types.TextContent(
         type="text",
         text=(
-            f"citation-network-mcp server\n"
+            f"scopus-plus-mcp server\n"
             f"version: {SERVER_VERSION}\n"
             f"status: ok\n"
         ),

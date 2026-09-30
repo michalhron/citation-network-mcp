@@ -33,7 +33,7 @@ jobs:
       run: uv run python scripts/build_extension.py
 
     - name: Committed manifests must already be current
-      run: git diff --exit-code manifest.json plugins/citation-network-mcp/.claude-plugin/plugin.json server.json
+      run: git diff --exit-code manifest.json plugins/scopus-plus-mcp/.claude-plugin/plugin.json server.json
 
     - name: Publish the GitHub Release
       env:

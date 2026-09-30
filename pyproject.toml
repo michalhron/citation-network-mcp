@@ -1,7 +1,7 @@
 [project]
-name = "citation-network-mcp"
+name = "scopus-plus-mcp"
 dynamic = ["version"]
-description = "MCP server for citation-network analysis on Scopus or OpenAlex: coupling, co-citation, lineages, bibliometrics"
+description = "Scopus MCP server and more: search, full text, citation networks, journal quality and bibliometrics; OpenAlex without a subscription"
 readme = "README.md"
 authors = [
   {name = "Michal Hron"},
@@ -32,10 +32,10 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/michalhron/citation-network-mcp"
-Documentation = "https://github.com/michalhron/citation-network-mcp#readme"
-Repository = "https://github.com/michalhron/citation-network-mcp"
-Issues = "https://github.com/michalhron/citation-network-mcp/issues"
+Homepage = "https://github.com/michalhron/scopus-plus-mcp"
+Documentation = "https://github.com/michalhron/scopus-plus-mcp#readme"
+Repository = "https://github.com/michalhron/scopus-plus-mcp"
+Issues = "https://github.com/michalhron/scopus-plus-mcp/issues"
 
 [project.optional-dependencies]
 keyring = [
@@ -47,8 +47,9 @@ dev = [
 ]
 
 [project.scripts]
+scopus-plus-mcp = "scopus_mcp.cli:main"
+# Former names, kept so existing configurations keep working.
 citation-network-mcp = "scopus_mcp.cli:main"
-# Alias kept so existing configs that run `scopus-mcp` keep working.
 scopus-mcp = "scopus_mcp.cli:main"
 
 [tool.pytest.ini_options]

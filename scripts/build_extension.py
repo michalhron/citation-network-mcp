@@ -4,7 +4,7 @@
 
 Fills manifest.json's version and tool list, and the versions in the Claude
 Code plugin and the MCP registry entry (server.json), from the code; validates the manifest;
-and packs dist/citation-network-mcp-<version>.mcpb with the official mcpb CLI (run
+and packs dist/scopus-plus-mcp-<version>.mcpb with the official mcpb CLI (run
 through npx, so Node.js is required). tests/test_extension.py fails when the
 committed manifest.json is out of date; running this script fixes that.
 """
@@ -47,7 +47,7 @@ async def _code_tools():
         await server.openalex.close()
 
 
-PLUGIN_JSON = ROOT / 'plugins' / 'citation-network-mcp' / '.claude-plugin' / 'plugin.json'
+PLUGIN_JSON = ROOT / 'plugins' / 'scopus-plus-mcp' / '.claude-plugin' / 'plugin.json'
 SERVER_JSON = ROOT / 'server.json'  # MCP registry entry
 
 
@@ -74,7 +74,7 @@ def sync_manifest() -> str:
 def main():
     version = sync_manifest()
     subprocess.run([*MCPB, 'validate', str(ROOT / 'manifest.json')], check=True)
-    out = ROOT / 'dist' / f'citation-network-mcp-{version}.mcpb'
+    out = ROOT / 'dist' / f'scopus-plus-mcp-{version}.mcpb'
     out.parent.mkdir(exist_ok=True)
     subprocess.run([*MCPB, 'pack', str(ROOT), str(out)], check=True)
     print(f"built {out}")

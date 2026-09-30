@@ -5,6 +5,12 @@ are pushed yet (see "Release process" in ROADMAP.md).
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-09-30
+
+### Changed
+- One version source: `scopus_mcp.__version__`. `pyproject.toml` reads it
+  (hatch dynamic version); the server and all User-Agent headers import it.
+
 ### Added
 - `diagnose_connection` probes per-API capabilities: REF-view references,
   ScienceDirect full text (a subscription canary, so open access cannot pass

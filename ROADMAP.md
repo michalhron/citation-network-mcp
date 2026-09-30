@@ -8,8 +8,8 @@ _Last updated: 2026-09-30._
 
 ## Status
 
-- 0.8.1 merged into `main` (PR #2). Phase 1 so far in PR #3
-  (`feat/roadmap-phase1`); later Phase 1 work on `feat/phase1-part2`.
+- 0.9.0: Phase 1 code complete and merged (PRs #2, #3). Remaining Phase 1
+  work is the data harvest (item 2).
   Claude Desktop is pinned to that branch's tip. See CHANGELOG.md.
 - 14 tools. Scopus: search, `search_all`, abstracts, author profiles,
   identifiers, references, citing papers, full text. Networks:
@@ -104,9 +104,10 @@ and OpenAlex, since Scopus REF view and full text end with the affiliation.
 
 ## Release process
 
-Bump `pyproject.toml`, `SERVER_VERSION` and the User-Agent strings together,
-add a CHANGELOG entry, merge to `main`, repin Claude Desktop to the merge
-commit. No tags until Phase 2 fixes `publish.yml`.
+Change `__version__` in `src/scopus_mcp/__init__.py` (the only place the
+version lives), move the CHANGELOG's Unreleased entries under the new
+version, merge to `main`, repin Claude Desktop to the merge commit. No tags
+until Phase 2 fixes `publish.yml`.
 
 ---
 

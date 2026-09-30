@@ -191,6 +191,19 @@ Reference Publication Year Spectroscopy (Marx et al. 2014): counts every cited r
 | `to_year` | integer |  | Latest cited year (default: this year). |
 | `top_peaks` | integer | 10 | Peaks to report (default 10). |
 
+### `research_fronts` · **OpenAlex**
+
+Research fronts of a paper set: Louvain communities of its direct-citation network (as in CitNetExplorer), each described by its years, density, core papers (most cited within the set) and the keywords that distinguish it. Also reports which front each paper of the global main path belongs to and where the path hops from one front to another: a main path that stays in one front traces a single conversation, one that hops stitches several together. Give ids or a query. Writes JSON and Pajek .net plus .clu (partition) files. Cost: one reference and one abstract request per paper (cached).
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `ids` | list of string |  | The papers (Scopus IDs/EIDs; with source='openalex', DOIs or OpenAlex IDs). Use this or query. |
+| `query` | string |  | Search query defining the set, instead of ids. |
+| `max_results` | integer | 300 | With query: how many papers to include (default 300). |
+| `scope` |  |  | Restrict to journals, by ISSN: a list of ISSNs, or a basket name ('basket_of_eight' / 'ais8': the AIS Senior Scholars' Basket of Eight). ISSNs are used rather than journal names, which Scopus spells inconsistently. |
+| `resolution` | number | 1.0 | Louvain resolution: above 1 gives more, smaller fronts (default 1). |
+| `min_size` | integer | 3 | Smallest front reported; smaller groups count as unclustered (default 3). |
+
 ## Audit
 
 ### `resolve_citers` · **OpenAlex**

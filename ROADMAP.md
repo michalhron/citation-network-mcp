@@ -177,9 +177,15 @@ make one release that strengthens a methods section; 5–6 follow.
 - [x] **4. Historiograph** (Garfield; bibliometrix; 0.20.0 `historiograph`).
       8 of the 10 main-path papers are among the 25 most cited within the
       set; Ramiller 2008 and Wang 2021 only just.
-- [ ] **5. Research fronts** (CitNetExplorer). Community detection on the
-      citation network, clusters labelled by key terms; shows whether the
-      main path stays in one front or hops between fronts. Medium.
+- [x] **5. Research fronts** (CitNetExplorer; 0.22.0 `research_fronts`).
+      Louvain communities of the direct-citation network, labelled by
+      distinctive keywords, and the main path's route across them with hop
+      robustness over three resolutions. Organizing vision: the path runs
+      through an organizing-vision/institutional-entrepreneurship front
+      (Ramiller 2003), a management-fashion front (Swanson 2004 to Wang
+      2010), a digital-innovation front (Kohli 2019, Wang 2021) and an
+      innovation/diffusion/frames front; the Wang 2010 to Kohli 2019 hop is
+      the edge path_transmission labels hollow.
 - [ ] **6. Import of Scopus / Web of Science export files**, merged and
       deduplicated (bibliometrix, metaknowledge): a corpus fixed from a
       saved search, reproducible without API access on the day. Medium.

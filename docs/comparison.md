@@ -62,7 +62,8 @@ Corrections are welcome as issues.
 - **Breadth of Elsevier APIs.** scopus-mcp-extended covers 25 endpoints,
   including PlumX altmetrics, Embase, ScienceDirect full-text search and
   affiliation search.
-- **Installation.** elsevier-mcp installs as a Claude Code plugin and strato
-  ships a Docker image. This project is not yet on PyPI under its own name.
+- **Package registries.** strato ships a Docker image and upstream is on
+  PyPI; this project installs as a Claude Desktop extension or Claude Code
+  plugin but is not yet on PyPI under its own name.
 - **Workflow-shaped tools.** strato wraps common questions ("find experts",
   "compare documents") in single tools.

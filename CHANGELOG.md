@@ -19,6 +19,12 @@ are pushed yet (see "Release process" in ROADMAP.md).
   `openalex_api_key`, or `config.json`), sent as a Bearer header. A free key
   raises OpenAlex's daily budget from $0.10 to $1; errors report the
   remaining budget.
+- `get_journal_metrics`: SJR, SNIP, CiteScore and CiteScore Tracker (with
+  years) plus subject areas for up to 200 journals, by ISSN or Scopus source
+  ID, written to CSV. Source IDs are mapped to ISSNs through Scopus search,
+  because the Serial Title API silently ignores them. Unmatched journals
+  are listed, not dropped. `source="openalex"` returns OpenAlex's own
+  measures (2-year mean citedness, h-index, i10-index).
 - `get_bibtex`: BibTeX for up to 200 DOIs, Scopus IDs or OpenAlex IDs via DOI
   content negotiation, written to a `.bib` file. Page ranges use `--`,
   repeated keys get a/b suffixes, and one paper given twice appears once.

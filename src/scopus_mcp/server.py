@@ -11,6 +11,13 @@ import mcp.types as types
 
 from .bibtex import fetch_bibtex, generated_entry, make_keys_unique
 from .client import FULLTEXT_MIN_CHARS, ScopusClient
+from .journals import (
+    clean_openalex_source,
+    clean_serial_entry,
+    format_issn,
+    normalize_issn,
+    serial_entry_issns,
+)
 from .openalex import (
     OpenAlexClient,
     clean_openalex_work,
@@ -59,6 +66,8 @@ openalex = OpenAlexClient()
 MAX_SCOPUS_YEARS = 60
 # Cap on identifiers per get_bibtex call.
 MAX_BIBTEX = 200
+# Cap on journals per get_journal_metrics call.
+MAX_JOURNALS = 200
 
 SOURCE_SCHEMA = {
     "type": "string",
@@ -247,6 +256,35 @@ async def handle_list_tools() -> list[types.Tool]:
                     "source": SOURCE_SCHEMA
                 },
                 "required": ["query"]
+            }
+        ),
+        types.Tool(
+            name="get_journal_metrics",
+            description=(
+                "Journal metrics for a list of journals, e.g. a litbaskets basket. "
+                "Scopus (default): SJR, SNIP, CiteScore and CiteScore Tracker with "
+                "their years, plus subject areas, from the Serial Title API. Give "
+                "ISSNs, or Scopus source IDs (SRCIDs), which are mapped to ISSNs "
+                "through one Scopus search each (needs search entitlement). "
+                "source='openalex': OpenAlex's own measures (2-year mean citedness, "
+                "h-index, i10-index), ISSNs only, no entitlement. Journals not found "
+                "are listed, never dropped. Also written to CSV. "
+                f"At most {MAX_JOURNALS} journals per call."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "issns": {
+                        "type": "array", "items": {"type": "string"},
+                        "description": "ISSNs, with or without hyphen."
+                    },
+                    "source_ids": {
+                        "type": "array", "items": {"type": "string"},
+                        "description": "Scopus source IDs (SRCID), Scopus only."
+                    },
+                    "source": SOURCE_SCHEMA
+                },
+                "required": []
             }
         ),
         types.Tool(
@@ -630,6 +668,36 @@ async def _bibtex_target(identifier: str):
     return details.get('doi'), meta, 'Scopus'
 
 
+def _flatten_row(row: dict) -> dict:
+    """CSV-friendly: {'year', 'value'} metrics become value + _year columns,
+    lists become '; '-joined strings."""
+    flat = {}
+    for k, v in row.items():
+        if isinstance(v, dict) and set(v) == {'year', 'value'}:
+            flat[k] = v['value']
+            flat[f'{k}_year'] = v['year']
+        elif isinstance(v, list):
+            flat[k] = '; '.join(str(x) for x in v)
+        else:
+            flat[k] = v
+    return flat
+
+
+def _write_rows_csv(rows: list, prefix: str):
+    import csv
+    flat = [_flatten_row(r) for r in rows]
+    columns = []
+    for r in flat:
+        columns.extend(k for k in r if k not in columns)
+    ts = _today_datetime.now().strftime('%Y%m%dT%H%M%S')
+    path = _output_dir() / f'{prefix}-{len(rows)}-{ts}.csv'
+    with path.open('w', newline='', encoding='utf-8') as f:
+        writer = csv.DictWriter(f, fieldnames=columns)
+        writer.writeheader()
+        writer.writerows(flat)
+    return path
+
+
 def _network_response(label: str, file_prefix: str, seed_sets: dict, seed_meta: dict,
                       n_seeds: int, params_note: str, skipped: list,
                       skipped_reason: str, source: str, min_shared: int):
@@ -945,6 +1013,84 @@ async def handle_call_tool(
                 f'min_shared={min_shared}, max_citing_per_seed={max_citing}',
                 skipped, 'no citing papers or API error', source, min_shared,
             )
+
+        elif name == "get_journal_metrics":
+            raw_issns = [str(i).strip() for i in (arguments.get("issns") or []) if str(i).strip()]
+            source_ids = [str(i).strip() for i in (arguments.get("source_ids") or []) if str(i).strip()]
+            source = _source(arguments)
+            if not raw_issns and not source_ids:
+                raise ValueError("Give issns and/or source_ids.")
+            if len(raw_issns) + len(source_ids) > MAX_JOURNALS:
+                raise ValueError(f"At most {MAX_JOURNALS} journals per call.")
+            if source == 'openalex' and source_ids:
+                raise ValueError("OpenAlex has no Scopus source IDs; pass ISSNs, "
+                                 "or use source='scopus'.")
+
+            rows, not_found = [], []
+            issn_inputs = []
+            for raw in raw_issns:
+                compact = normalize_issn(raw)
+                if compact:
+                    issn_inputs.append((raw, compact))
+                else:
+                    not_found.append(f"{raw}: not a valid ISSN")
+
+            if source == 'openalex':
+                for raw, compact in issn_inputs:
+                    src = await openalex.get_source_by_issn(format_issn(compact))
+                    if src:
+                        rows.append({'input': raw, **clean_openalex_source(src)})
+                    else:
+                        not_found.append(f"{raw}: not in OpenAlex")
+                note = ("OpenAlex measures (2-year mean citedness, h-index, i10-index); "
+                        "not comparable with SJR, SNIP or CiteScore.")
+            else:
+                srcid_issns = {}
+                for sid in source_ids:
+                    try:
+                        found = await client.source_id_issns(sid)
+                    except Exception as exc:
+                        not_found.append(f"source_id {sid}: lookup failed ({exc})")
+                        continue
+                    if not found:
+                        not_found.append(f"source_id {sid}: no Scopus records")
+                        continue
+                    srcid_issns[sid] = [c for c in (normalize_issn(found['issn']),
+                                                    normalize_issn(found['eissn'])) if c]
+                candidates = sorted({c for _, c in issn_inputs}
+                                    | {c for cs in srcid_issns.values() for c in cs})
+                entries = await client.serial_titles(candidates) if candidates else []
+                by_issn, by_srcid = {}, {}
+                for entry in entries:
+                    cleaned = clean_serial_entry(entry)
+                    for c in serial_entry_issns(entry):
+                        by_issn.setdefault(c, cleaned)
+                    if cleaned['source_id']:
+                        by_srcid.setdefault(str(cleaned['source_id']), cleaned)
+
+                for raw, compact in issn_inputs:
+                    hit = by_issn.get(compact)
+                    if hit:
+                        rows.append({'input': raw, **hit})
+                    else:
+                        not_found.append(
+                            f"{raw}: not in Serial Title under this ISSN. Scopus may "
+                            f"list the journal under its other (print/electronic) ISSN; "
+                            f"try that, or its source_id.")
+                for sid, cands in srcid_issns.items():
+                    hit = by_srcid.get(sid) or next(
+                        (by_issn[c] for c in cands if c in by_issn), None)
+                    if hit:
+                        rows.append({'input': f"source_id {sid}", **hit})
+                    else:
+                        not_found.append(f"source_id {sid}: no Serial Title entry for "
+                                         f"ISSNs {[format_issn(c) for c in cands]}")
+                note = "Latest year of each metric from the Scopus Serial Title API."
+
+            result = {'source': source, 'journals': rows, 'not_found': not_found, 'note': note}
+            if rows:
+                result['csv_path'] = str(_write_rows_csv(rows, f'journals-{source}'))
+            return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
         elif name == "get_bibtex":
             identifiers = [str(i).strip() for i in (arguments.get("identifiers") or [])

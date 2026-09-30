@@ -218,6 +218,13 @@ class OpenAlexClient:
                     "daily budget tenfold.")
         return msg
 
+    async def get_source_by_issn(self, issn: str) -> Optional[Dict[str, Any]]:
+        """Journal (OpenAlex 'source') by ISSN, '0276-7783' form; free, cached."""
+        return await self._get(f'sources/issn:{issn}', {
+            'select': 'id,display_name,host_organization_name,issn_l,issn,'
+                      'summary_stats,works_count,cited_by_count',
+        })
+
     async def get_work(self, identifier: str) -> Optional[Dict[str, Any]]:
         """Raw work by OpenAlex ID or DOI; None when not found."""
         key = openalex_work_key(identifier)

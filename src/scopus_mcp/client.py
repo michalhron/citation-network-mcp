@@ -51,6 +51,8 @@ RETRYABLE_TRANSPORT_ERRORS = (
 
 # Concurrent per-year requests in yearly_counts.
 YEARLY_CONCURRENCY = 4
+# ISSNs per Serial Title request (the API pages at 25 entries).
+SERIAL_BATCH = 25
 
 # The REF view returns at most this many references per response.
 REF_PAGE = 40
@@ -77,7 +79,7 @@ CAPABILITY_TOOLS = {
     'references': ['get_references', 'bibliographic_coupling',
                    'citation_lineage (backward)'],
     'fulltext': ['get_fulltext (ScienceDirect step; falls back to OA/abstract)'],
-    'serial_title': [],
+    'serial_title': ['get_journal_metrics (Scopus)'],
 }
 
 class ScopusClient:
@@ -459,6 +461,44 @@ class ScopusClient:
 
         pairs = await asyncio.gather(*(count(y) for y in range(from_year, to_year + 1)))
         return dict(pairs)
+
+    async def serial_titles(self, issns: list) -> list:
+        """
+        Serial Title entries for compact ISSNs, SERIAL_BATCH per request.
+        ISSNs Serial Title does not know are simply absent from the result
+        (a batch of only unknown ISSNs is a 404, returned by _request as {}).
+        Never pass Scopus source IDs here: the API ignores them and returns
+        an unrelated alphabetical list.
+        """
+        entries = []
+        for i in range(0, len(issns), SERIAL_BATCH):
+            data = await self._request(
+                'GET', 'content/serial/title',
+                {'issn': ','.join(issns[i:i + SERIAL_BATCH])},
+                ttl=self.cache_config['default'],
+            )
+            batch = (data.get('serial-metadata-response') or {}).get('entry') or []
+            entries.extend(e for e in batch if isinstance(e, dict))
+        return entries
+
+    async def source_id_issns(self, source_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Print and electronic ISSN of a Scopus source ID, read from one
+        count=1 search (SRCID(...)); None when the source has no records.
+        Needs search entitlement.
+        """
+        data = await self._request(
+            'GET', 'content/search/scopus',
+            {'query': f'SRCID({source_id})', 'count': 1,
+             'field': 'prism:issn,prism:eIssn,prism:publicationName,source-id'},
+            ttl=self.cache_config['default'],
+        )
+        entries = (data.get('search-results') or {}).get('entry') or []
+        entry = entries[0] if entries else {}
+        if not entry or entry.get('error'):
+            return None
+        return {'issn': entry.get('prism:issn'), 'eissn': entry.get('prism:eIssn'),
+                'name': entry.get('prism:publicationName')}
 
     async def search_all(self, query: str, max_results: int = 200, sort: str = 'coverDate') -> Dict[str, Any]:
         """

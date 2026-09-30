@@ -73,8 +73,12 @@ Every new tool gets a live smoke test before it is trusted (see Lessons).
 4. [x] **Yearly publication counts.** `publication_counts`, both sources.
        Live 2015–2026 for "organizing vision": Scopus 61, OpenAlex 77, with
        different year profiles, so compare trends within one source only.
-5. [ ] **Journal metrics** (SJR, SNIP, CiteScore) via the Serial Title API,
-       for litbaskets baskets.
+5. [x] **Journal metrics.** `get_journal_metrics`. Two live traps: Serial
+       Title ignores Scopus source IDs (returns the first 25 journals
+       alphabetically, HTTP 200), and knows JIT only as 2251-919X/1466-4437,
+       not the 0268-3962 its search records carry. Source IDs are mapped via
+       SRCID search and matched by source ID. Basket of Eight live: 7/8 by
+       print ISSN, JIT via source ID. The litbaskets skill can pass SRCIDs.
 6. [x] **BibTeX export.** `get_bibtex`; publisher metadata via DOI content
        negotiation (errors included: Crossref spells Doreian "Dereian" for
        Hummon & Doreian 1989), generated entries for DOI-less AIS papers.

@@ -78,7 +78,9 @@ Every new tool gets a live smoke test before it is trusted (see Lessons).
 - [x] PyPI trusted publisher configured; v0.11.0 tagged (2026-09-30).
 - [x] `publish.yml` publishes to PyPI (trusted publishing) and the MCP
       registry on version tags, under the new name.
-- [ ] Split `server.py` and `utils.py` (1,200+ lines each) into tool modules.
+- [x] Split `server.py` into `scopus_mcp/tools/` modules by group (0.14.0).
+- [ ] Split `utils.py` (1,389 lines: parsing, networks, rendering, file
+      output) the same way.
 - [x] README around the differentiator (done 2026-09-30, ahead of Phase 2).
 - [x] Dropped README_CN and the Chinese prompt guide; English examples in
       `docs/examples.md`.

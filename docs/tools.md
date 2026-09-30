@@ -165,6 +165,32 @@ Direct-citation network within a set of papers, in one call: fetches every paper
 | `page` | integer | 1 | With inline='full': which page of nodes (1-based). |
 | `page_size` | integer | 50 | With inline='full': nodes per page (default 50). |
 
+### `historiograph` · **OpenAlex**
+
+Garfield's historiograph: the papers most cited within the set (local citation score) on a time axis, with the citations among them and the global main path highlighted. Complements the main path with the picture readers expect beside it. Give ids or a query. Writes a PNG and a Pajek file; lists the papers with their local and global citation counts.
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `ids` | list of string |  | The papers (Scopus IDs/EIDs; with source='openalex', DOIs or OpenAlex IDs). Use this or query. |
+| `query` | string |  | Search query defining the set, instead of ids. |
+| `max_results` | integer | 300 | With query: how many papers to include (default 300). |
+| `scope` |  |  | Restrict to journals, by ISSN: a list of ISSNs, or a basket name ('basket_of_eight' / 'ais8': the AIS Senior Scholars' Basket of Eight). ISSNs are used rather than journal names, which Scopus spells inconsistently. |
+| `top` | integer | 30 | Papers to draw, by local citation score (default 30). |
+
+### `rpys` · **OpenAlex**
+
+Reference Publication Year Spectroscopy (Marx et al. 2014): counts every cited reference of a set of papers by the year the cited work appeared, subtracts the five-year median, and reports the peak years with the works cited most from each: the set's historical roots. Give ids or a query (e.g. the confirmed citers from resolve_citers). Writes a CSV of the spectrogram and a PNG. Cost: one reference request per paper (cached; shared with citation_network). With source='openalex' the cited works are fetched in batches of 50.
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `ids` | list of string |  | The papers (Scopus IDs/EIDs; with source='openalex', DOIs or OpenAlex IDs). Use this or query. |
+| `query` | string |  | Search query defining the set, instead of ids. |
+| `max_results` | integer | 300 | With query: how many papers to include (default 300). |
+| `scope` |  |  | Restrict to journals, by ISSN: a list of ISSNs, or a basket name ('basket_of_eight' / 'ais8': the AIS Senior Scholars' Basket of Eight). ISSNs are used rather than journal names, which Scopus spells inconsistently. |
+| `from_year` | integer | 1900 | Earliest cited year to count (default 1900). |
+| `to_year` | integer |  | Latest cited year (default: this year). |
+| `top_peaks` | integer | 10 | Peaks to report (default 10). |
+
 ## Audit
 
 ### `resolve_citers` · **OpenAlex**

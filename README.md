@@ -16,8 +16,8 @@ server, so any MCP client can use it: Claude Desktop, Claude Code, Cursor.
 
 - 🕸️ **Citation networks.** Bibliographic coupling, co-citation,
   multi-generation citation lineages, and the citation network within any
-  set of papers, with main path and key routes, exported for Pajek,
-  VOSviewer or Gephi.
+  set of papers, with SPC/SPLC/SPNP main paths and key routes, RPYS and a
+  historiograph, exported for Pajek, VOSviewer or Gephi.
 - 🧾 **Audited, not just built.** Citer sets verified across search
   strategies, reference lists checked against Crossref for gaps, and the
   sentences behind each citation, with their intent, from Semantic Scholar.
@@ -30,10 +30,10 @@ server, so any MCP client can use it: Claude Desktop, Claude Code, Cursor.
   and see how often and where each one uses it.
 - 🩺 **Honest about access.** One call tells you which tools your current
   Scopus access supports, and why the rest fail.
-- ✅ **Tested.** 483 test functions, CI on Linux, macOS and Windows, and a
+- ✅ **Tested.** 487 test functions, CI on Linux, macOS and Windows, and a
   live check of every tool against the real APIs.
 
-How it compares with the other Scopus MCP servers: **[comparison](docs/comparison.md)**.
+How it compares with the other Scopus MCP servers and with bibliometrics packages (bibliometrix, pybliometrics, VOSviewer, Pajek, ...): **[comparison](docs/comparison.md)**.
 
 ## Ask things like
 
@@ -53,7 +53,7 @@ How it compares with the other Scopus MCP servers: **[comparison](docs/compariso
 | --- | --- |
 | **Search and records** | `search_scopus` · `search_all` · `search_fulltext` · `get_abstract_details` · `resolve_identifier` · `search_authors` · `get_author_profile` · `get_fulltext` |
 | **Citations** | `get_references` · `get_citing_papers` |
-| **Networks** | `bibliographic_coupling` · `co_citation` · `citation_lineage` · `citation_network` |
+| **Networks** | `bibliographic_coupling` · `co_citation` · `citation_lineage` · `citation_network` · `historiograph` · `rpys` |
 | **Audit** | `resolve_citers` · `citation_context` · `path_transmission` · `index_coverage` |
 | **Bibliometrics** | `publication_counts` · `topic_landscape` · `get_journal_metrics` · `find_journals` · `get_bibtex` |
 | **Diagnostics and jobs** | `diagnose_connection` · `get_quota_status` · `get_server_info` · `job_status` · `job_result` |
@@ -107,7 +107,7 @@ tells you which tools your Scopus access supports.
 | [Data sources](docs/data-sources.md) | Scopus vs OpenAlex: when to use which, measured coverage |
 | [Configuration](docs/configuration.md) | All settings; keeping keys in the OS secret store |
 | [Access and troubleshooting](docs/access.md) | Off-campus access, tokens, proxies, reading `diagnose_connection` |
-| [Comparison](docs/comparison.md) | This project vs the other Scopus MCP servers |
+| [Comparison](docs/comparison.md) | This project vs the other Scopus MCP servers, and vs bibliometrics packages |
 | [Development](docs/development.md) | Tests, live smoke tests, releases |
 | [Prompt examples](docs/examples.md) · [Changelog](CHANGELOG.md) · [Roadmap](ROADMAP.md) | |
 

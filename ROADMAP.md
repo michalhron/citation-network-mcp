@@ -167,13 +167,14 @@ make one release that strengthens a methods section; 5–6 follow.
       corpus-level counterpart of the construct-shifted edge label (does
       "organizing vision" dissolve into "IT fashion" or "institutional
       logics"?). Medium.
-- [ ] **3. Reference Publication Year Spectroscopy** (metaknowledge,
-      bibliometrix). Peaks in the cited years of a corpus's references
-      reveal its historical roots. Cheap: complete reference lists are
-      already fetched.
-- [ ] **4. Historiograph** (Garfield; bibliometrix). Time-ordered drawing of
-      the most-cited papers in the set and the citations among them, beside
-      the main path. Mostly rendering of citation_network output.
+- [x] **3. Reference Publication Year Spectroscopy** (metaknowledge,
+      bibliometrix; 0.20.0 `rpys`). Organizing-vision citers: peaks at 1983
+      (DiMaggio & Powell), 1991 (Abrahamson; Powell & DiMaggio), 1994
+      (Swanson; King et al.), 1997 (Swanson & Ramiller), 2004 (Swanson &
+      Ramiller), 2007 (institutional logics).
+- [x] **4. Historiograph** (Garfield; bibliometrix; 0.20.0 `historiograph`).
+      8 of the 10 main-path papers are among the 25 most cited within the
+      set; Ramiller 2008 and Wang 2021 only just.
 - [ ] **5. Research fronts** (CitNetExplorer). Community detection on the
       citation network, clusters labelled by key terms; shows whether the
       main path stays in one front or hops between fronts. Medium.

@@ -470,7 +470,7 @@ async def _collect_scopus(client, arguments):
         except Exception as exc:
             parse_errors[sid] = _err(exc)
     _link(nodes, refs_by_id, parse_errors)
-    return nodes, fetch_errors, parse_errors
+    return nodes, fetch_errors, parse_errors, refs_by_id
 
 
 async def _collect_openalex(openalex, arguments):
@@ -501,7 +501,25 @@ async def _collect_openalex(openalex, arguments):
             parse_errors[short_id(w.get('id')) or '?'] = _err(exc)
     for key, refs in ref_ids.items():
         nodes[key]['parents'] = [r for r in dict.fromkeys(refs) if r in nodes and r != key]
-    return nodes, fetch_errors, parse_errors
+    return nodes, fetch_errors, parse_errors, ref_ids
+
+
+async def collect_corpus(srv, arguments):
+    """(nodes, fetch_errors, parse_errors, references) for ids or a query.
+    references: cleaned Scopus reference lists, or OpenAlex referenced-work
+    IDs, per paper."""
+    ids, query = arguments.get("ids"), arguments.get("query")
+    if bool(ids) == bool(query):
+        raise ValueError("Give either ids or query.")
+    if ids and len(ids) > MAX_CORPUS:
+        raise ValueError(f"At most {MAX_CORPUS} ids per call.")
+    if _source(arguments) == 'openalex':
+        out = await _collect_openalex(srv.openalex, arguments)
+    else:
+        out = await _collect_scopus(srv.client, arguments)
+    if not out[0]:
+        raise ValueError("No papers found for the given ids or query.")
+    return out
 
 
 def _node_line(key, n, nodes, errors):
@@ -533,12 +551,7 @@ async def _citation_network(arguments: dict) -> list:
     k = int(arguments.get("key_routes", 10))
     check = arguments.get("check_completeness", True)
 
-    if source == 'openalex':
-        nodes, fetch_errors, parse_errors = await _collect_openalex(srv.openalex, arguments)
-    else:
-        nodes, fetch_errors, parse_errors = await _collect_scopus(srv.client, arguments)
-    if not nodes:
-        raise ValueError("No papers found for the given ids or query.")
+    nodes, fetch_errors, parse_errors, _ = await collect_corpus(srv, arguments)
     errors = {**fetch_errors, **parse_errors}
     missing = [key for key in nodes if key in errors]
 

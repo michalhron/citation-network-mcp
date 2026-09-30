@@ -599,6 +599,27 @@ class ScopusClient:
         refs_block['@unservable'] = max(0, reported - len(refs))
         return data
 
+    async def get_bibliography(self, scopus_id: str) -> Optional[List[Dict[str, Any]]]:
+        """The whole reference list from the FULL view's bibliography, in
+        REF-view shape. Unlike the REF view it dates (nearly) every entry,
+        which RPYS needs: the REF view leaves prism:coverDate empty for most
+        older references. None when the FULL view is unavailable."""
+        endpoint = f"content/abstract/scopus_id/{to_scopus_id(scopus_id)}"
+        try:
+            full = await self._request('GET', endpoint, {'view': 'FULL'},
+                                       ttl=self.cache_config['abstract'])
+        except Exception as exc:
+            logger.info(f"FULL-view bibliography unavailable for {scopus_id}: {exc}")
+            return None
+        bib = ((((full.get('abstracts-retrieval-response') or {}).get('item') or {})
+                .get('bibrecord') or {}).get('tail') or {}).get('bibliography') or {}
+        entries = bib.get('reference')
+        if entries is None:
+            return None
+        if isinstance(entries, dict):
+            entries = [entries]
+        return [bibliography_to_ref(e) for e in entries if isinstance(e, dict)]
+
     async def _bibliography_tail(self, endpoint: str, have: int, ttl) -> List[Dict[str, Any]]:
         """References after position `have`, from the FULL view's
         bibliography, reshaped like REF-view entries. [] when the FULL

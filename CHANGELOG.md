@@ -5,6 +5,24 @@ are pushed yet (see "Release process" in ROADMAP.md).
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-09-30
+
+### Added
+- `rpys`: Reference Publication Year Spectroscopy (Marx et al. 2014) of a
+  paper set: cited references per year, deviation from the five-year
+  median, the peak years and the works cited most in each; CSV, JSON, PNG.
+  Years come from the FULL view's bibliography, because the REF view leaves
+  most older references undated (63 of 73 for Swanson & Ramiller 1997);
+  on the 113 organizing-vision papers 39 of 10,290 references stay undated.
+- `historiograph`: Garfield's historiograph: the papers most cited within
+  the set on a time axis, citations among them, the global main path
+  highlighted; PNG, Pajek, JSON, and a list with local and global citation
+  counts.
+- `docs/comparison.md`: a second table, against bibliometrics packages
+  (bibliometrix, pybliometrics, metaknowledge, litstudy, VOSviewer /
+  CitNetExplorer, Pajek / MainPath), with where each side leads. The Scopus
+  MCP table gains rows for the audit tools and current counts.
+
 ## [0.19.0] - 2026-09-30
 
 ### Added

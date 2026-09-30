@@ -21,7 +21,7 @@ GROUPS = [
                             'get_fulltext']),
     ('Citations', ['get_references', 'get_citing_papers']),
     ('Networks and lineage', ['bibliographic_coupling', 'co_citation', 'citation_lineage',
-                              'citation_network']),
+                              'citation_network', 'historiograph', 'rpys']),
     ('Audit', ['resolve_citers', 'citation_context', 'path_transmission', 'index_coverage']),
     ('Bibliometrics and bibliography', ['publication_counts', 'topic_landscape',
                                         'get_journal_metrics', 'find_journals',

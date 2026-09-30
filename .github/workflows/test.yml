@@ -1,8 +1,8 @@
 name: Tests
 
+# Every branch push, so cross-platform results exist before a PR is opened.
 on:
   push:
-    branches: [main]
   pull_request:
 
 jobs:

@@ -32,14 +32,14 @@ def _json_result(result):
 
 FULL_SD_RESPONSE = {
     'full-text-retrieval-response': {
-        'originalText': 'A' * 600,  # >500 chars → treated as full text
+        'originalText': 'A' * 6000,  # >= FULLTEXT_MIN_CHARS → full text
         'coredata': {'dc:title': 'Test Paper'},
     }
 }
 
 ABSTRACT_ONLY_SD_RESPONSE = {
     'full-text-retrieval-response': {
-        'originalText': 'Short abstract.',  # <500 chars → abstract-only
+        'originalText': 'Short abstract.',  # far below the bar → abstract-only
         'coredata': {'dc:title': 'Test Paper'},
     }
 }
@@ -95,7 +95,7 @@ def _fake_http_resp(status=200, json_data=None, content=b'', text='', headers=No
 # ---------------------------------------------------------------------------
 
 def test_sd_fulltext_returns_provenance_and_writes_disk(tmp_path):
-    """ScienceDirect returns >500-char originalText → provenance sciencedirect-fulltext, written to disk."""
+    """ScienceDirect returns >= FULLTEXT_MIN_CHARS of originalText → provenance sciencedirect-fulltext, written to disk."""
     with (
         patch.dict(os.environ, {'SCOPUS_API_KEY': 'dummy', 'SCOPUS_MCP_OUTPUT_DIR': str(tmp_path)}),
         patch('scopus_mcp.server.client') as mock_client,
@@ -109,11 +109,11 @@ def test_sd_fulltext_returns_provenance_and_writes_disk(tmp_path):
         data = _json_result(result)
 
         assert data['provenance'] == 'sciencedirect-fulltext'
-        assert data['char_count'] == 600
+        assert data['char_count'] == 6000
         assert data['doi'] == '10.1234/test'
         assert 'file_path' in data
         written = Path(data['file_path']).read_text()
-        assert written == 'A' * 600
+        assert written == 'A' * 6000
 
 
 def test_sd_abstract_only_falls_through(tmp_path):
@@ -310,3 +310,30 @@ def test_insttoken_header_absent_when_not_set():
         c = client_mod.ScopusClient()
         assert 'X-ELS-Insttoken' not in c.headers
         asyncio.new_event_loop().run_until_complete(c.close())
+
+
+ABSTRACT_WITH_METADATA_SD_RESPONSE = {
+    'full-text-retrieval-response': {
+        # Abstract-length body: long enough to pass the old 500-char bar.
+        'originalText': 'B' * 1800,
+        'coredata': {'dc:title': 'Test Paper'},
+    }
+}
+
+
+def test_sd_abstract_length_text_is_not_labelled_fulltext(tmp_path):
+    """An abstract-length ScienceDirect body must fall through, not be called full text."""
+    with (
+        patch.dict(os.environ, {'SCOPUS_API_KEY': 'dummy', 'SCOPUS_MCP_OUTPUT_DIR': str(tmp_path)}),
+        patch('scopus_mcp.server.client') as mock_client,
+        patch('scopus_mcp.server.fetch_oa_fulltext', new_callable=AsyncMock) as mock_oa,
+    ):
+        mock_client.get_sciencedirect_fulltext = AsyncMock(
+            return_value=ABSTRACT_WITH_METADATA_SD_RESPONSE)
+        mock_oa.return_value = {'text': None, 'source_url': None}
+        mock_client.get_abstract_by = AsyncMock(return_value=ABSTRACT_RESPONSE)
+
+        from scopus_mcp.server import handle_call_tool
+        data = _json_result(_run(handle_call_tool('get_fulltext', {'doi': '10.1234/test'})))
+
+        assert data['provenance'] != 'sciencedirect-fulltext'

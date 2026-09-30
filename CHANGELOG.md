@@ -28,6 +28,10 @@ are pushed yet (see "Release process" in ROADMAP.md).
   credited under "Origins and credits".
 
 ### Fixed
+- `get_fulltext` labelled any ScienceDirect body over 500 characters as
+  full text, so an abstract with metadata could pass. It now uses the same
+  5,000-character bar as `diagnose_connection`; shorter bodies fall through
+  to open access and then the abstract.
 - `get_references` returned at most 40 references (the REF view's page
   size), which also truncated `bibliographic_coupling` and backward
   `citation_lineage`. It now pages through the full list. Re-run coupling

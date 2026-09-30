@@ -8,7 +8,7 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 import mcp.types as types
 
-from .client import ScopusClient
+from .client import FULLTEXT_MIN_CHARS, ScopusClient
 from .openalex import (
     OpenAlexClient,
     clean_openalex_work,
@@ -1294,7 +1294,11 @@ async def handle_call_tool(
                     if sd_data:
                         root = sd_data.get('full-text-retrieval-response') or {}
                         candidate = (root.get('originalText') or '').strip()
-                        if len(candidate) > 500:
+                        # Same bar as diagnose_connection's full-text probe: an
+                        # abstract plus metadata can exceed a few hundred
+                        # characters, and abstract-grade text must never be
+                        # labelled full text. Shorter bodies fall through to OA.
+                        if len(candidate) >= FULLTEXT_MIN_CHARS:
                             text_body = candidate
                             provenance = "sciencedirect-fulltext"
                 except Exception as exc:

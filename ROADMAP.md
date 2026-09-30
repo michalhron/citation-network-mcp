@@ -8,8 +8,8 @@ _Last updated: 2026-09-30._
 
 ## Status
 
-- Version 0.8.1 on `feat/offnetwork-auth` (PR #2), awaiting merge into `main`;
-  Phase 1 work continues on `feat/roadmap-phase1`, stacked on it.
+- 0.8.1 merged into `main` (PR #2). Phase 1 so far in PR #3
+  (`feat/roadmap-phase1`); later Phase 1 work on `feat/phase1-part2`.
   Claude Desktop is pinned to that branch's tip. See CHANGELOG.md.
 - 14 tools. Scopus: search, `search_all`, abstracts, author profiles,
   identifiers, references, citing papers, full text. Networks:
@@ -40,8 +40,8 @@ if the API key itself survives the affiliation. Two consequences:
 - [x] Off-network entitlement: OS secret store, proxy, diagnostics (0.8.1).
 - [x] Cross-OS CI.
 - [x] CHANGELOG.md; this consolidated roadmap.
-- [ ] Merge PR #2 into `main` (Michal; Claude may not merge), then repin
-      Claude Desktop to `main`.
+- [x] Merge PR #2 into `main` (2026-09-30). Claude may not merge PRs;
+      Michal merges.
 - [ ] Optional: comment on upstream PRs asking about co-maintainership.
 
 ## Phase 1 — Features, ordered by the access deadline

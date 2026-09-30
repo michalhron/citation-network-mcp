@@ -11,6 +11,9 @@ sits between the two.
 | `SCOPUS_INSTTOKEN` | `insttoken` | — | Institutional token (`X-ELS-Insttoken`): subscriber access from any network. |
 | `SCOPUS_PROXY` | `proxy` | — | Proxy for Elsevier traffic only, e.g. `socks5h://127.0.0.1:1080`. See [access](access.md). |
 | `OPENALEX_API_KEY` | `openalex_api_key` | — | Free OpenAlex account key; raises the daily budget from $0.10 to $1. |
+| `CONTACT_EMAIL` | `contact_email` | — | Your email, sent to open scholarly APIs that ask for one (OpenAlex, arXiv, Semantic Scholar) and required by Unpaywall. Unset by default: no email is sent. |
+| `CORE_API_KEY` | `core_api_key` | — | Free key from core.ac.uk; adds CORE's repository copies to open-access full-text lookups. |
+| `SEMANTIC_SCHOLAR_API_KEY` | `semantic_scholar_api_key` | — | Optional; raises Semantic Scholar's rate limit for open-access lookups. |
 | `SCOPUS_MCP_OUTPUT_DIR` | — | `~/scopus-mcp-output` | Where result, graph, BibTeX and full-text files go. |
 | `SCOPUS_PAGE_SIZE` | `page_size` | `25` | Records per Scopus request in `search_all` (1–200). |
 | `SCOPUS_MAX_RETRIES` | `max_retries` | `2` | Retries for timeouts, 429 and 5xx; `0` disables. |

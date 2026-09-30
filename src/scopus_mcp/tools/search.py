@@ -215,7 +215,10 @@ TOOLS = [
         description=(
             "Retrieve the full text of a paper via a provider waterfall: "
             "(1) ScienceDirect full text (requires SCOPUS_INSTTOKEN or institutional IP), "
-            "(2) open-access copy via OpenAlex + direct fetch, "
+            "(2) open-access copy: every open location in OpenAlex, Semantic Scholar's "
+            "open PDF and arXiv ID, arXiv by exact title, Europe PMC, and Unpaywall "
+            "or CORE when configured; published versions first, and the result names "
+            "the source and version (preprint, accepted manuscript, published), "
             "(3) Scopus abstract fallback. "
             "Returns provenance, character count, file path, and a ~1500-char sample. "
             "Full body is written to disk — never returned inline. "
@@ -477,6 +480,8 @@ async def _get_fulltext(arguments: dict) -> list:
     text_body: Optional[str] = None
     provenance: str = "none"
     source_url: Optional[str] = None
+    oa_source = oa_version = None
+    oa_attempts: list = []
 
     # ── Tier 1: ScienceDirect ────────────────────────────────────────
     if prefer in (None, "sciencedirect"):
@@ -499,9 +504,11 @@ async def _get_fulltext(arguments: dict) -> list:
     if text_body is None and prefer in (None, "oa"):
         oa_result = await fetch_oa_fulltext(doi)
         source_url = oa_result.get('source_url')
+        oa_attempts = oa_result.get('attempts') or []
         if oa_result.get('text'):
             text_body = oa_result['text']
             provenance = "oa-fulltext"
+            oa_source, oa_version = oa_result.get('source'), oa_result.get('version')
 
     # ── Tier 3: Abstract fallback ────────────────────────────────────
     if text_body is None and prefer in (None, "abstract"):
@@ -538,6 +545,14 @@ async def _get_fulltext(arguments: dict) -> list:
     }
     if source_url:
         summary['source_url'] = source_url
+    if oa_source:
+        # Which open copy, and which version: a preprint may differ from the
+        # published article, so quote accordingly.
+        summary['oa_source'] = oa_source
+        summary['oa_version'] = oa_version or 'unknown'
+        summary['oa_title_verified'] = bool(oa_result.get('title_verified'))
+    if oa_attempts:
+        summary['oa_attempts'] = oa_attempts
     if file_path:
         summary['file_path'] = file_path
     summary['sample'] = sample

@@ -2,7 +2,7 @@
   "manifest_version": "0.4",
   "name": "citation-network-mcp",
   "display_name": "Citation Network MCP",
-  "version": "0.14.0",
+  "version": "0.15.0",
   "description": "Citation-network analysis on Scopus or OpenAlex: search, citations, coupling, co-citation, lineages, bibliometrics.",
   "long_description": "Search the literature, trace who cites whom across generations, map research fronts and intellectual bases, and get publication counts, journal metrics and BibTeX. Scopus by default; OpenAlex needs no subscription.",
   "author": {
@@ -67,7 +67,7 @@
     },
     {
       "name": "get_fulltext",
-      "description": "Retrieve the full text of a paper via a provider waterfall: (1) ScienceDirect full text (requires SCOPUS_INSTTOKEN or institutional IP), (2) open-access copy via OpenAlex + direct fetch, (3) Scopus abstract fallback."
+      "description": "Retrieve the full text of a paper via a provider waterfall: (1) ScienceDirect full text (requires SCOPUS_INSTTOKEN or institutional IP), (2) open-access copy: every open location in OpenAlex, Semantic Scholar's open PDF and arXiv ID, arXiv by exact title, Europe PMC, and Unpaywall or CORE when configured; published versions first, and the result names the source and version (preprint, accepted manuscript, published), (3) Scopus abstract fallback."
     },
     {
       "name": "get_references",

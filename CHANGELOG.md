@@ -5,6 +5,25 @@ are pushed yet (see "Release process" in ROADMAP.md).
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-09-30
+
+### Added
+- Main-path variants in `citation_network` (roadmap "From established
+  bibliometrics tools", item 1). `weight`: SPC (search path count, the
+  default), SPLC (search path link count: paths may start at any paper) or
+  SPNP (search path node pair: paths between any two papers), after
+  Batagelj 2003 and Liu & Lu 2012. Every run now reports the local
+  forward, local backward and global main paths.
+- `key_route_search`: 'local' (heaviest adjoining edge, as before) or
+  'global' (heaviest whole path to and from each key edge).
+- `robustness` (default on): the global main path under all three weights,
+  the papers they share and their pairwise overlap. On the
+  organizing-vision network (113 papers) the global path is identical
+  under SPC, SPLC and SPNP; the local backward path agrees up to Wang 2010
+  and then runs through Nielsen 2014 and Gal 2022.
+- ROADMAP: six features from bibliometrix, metaknowledge, Pajek/MainPath
+  and CitNetExplorer, with the ones deliberately left out.
+
 ## [0.18.0] - 2026-09-30
 
 Roadmap items A to D from the 0.17.0 field test: the main-path transmission

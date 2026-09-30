@@ -535,8 +535,8 @@ def test_inline_full_is_paged(tmp_path):
 
 def test_key_route_line_counts_distinct_routes(tmp_path):
     text = _big_network(tmp_path, n=12, key_routes=10, inline='summary')
-    line = next(ln for ln in text.splitlines() if ln.startswith('Key routes:'))
-    assert line.startswith('Key routes: top 10 SPC edges extend into ')
+    line = next(ln for ln in text.splitlines() if ln.startswith('Key routes ('))
+    assert line.startswith('Key routes (SPC, local search): top 10 edges extend into ')
     assert 'distinct routes (' in line
 
 

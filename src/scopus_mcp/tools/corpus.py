@@ -23,7 +23,7 @@ from ..baskets import (
 )
 from ..completeness import RULE_TEXT, assess, external_reference_counts
 from ..graphs import _make_node_label
-from ..lineage import compute_main_path, key_route_paths, write_pajek
+from ..lineage import WEIGHTS, compute_main_path, key_route_paths, main_path_robustness, write_pajek
 from ..openalex import bare_doi, clean_openalex_work, normalize_title, openalex_work_key, short_id
 from ..output import _output_dir, _query_slug
 from ..records import (
@@ -136,6 +136,35 @@ TOOLS = [
                     "type": "boolean",
                     "description": "Compare each reference list with an independent count (default true).",
                     "default": True,
+                },
+                "weight": {
+                    "type": "string",
+                    "enum": list(WEIGHTS),
+                    "default": "spc",
+                    "description": (
+                        "Traversal weight for the main paths and key routes: 'spc' "
+                        "(search path count, source-to-sink paths), 'splc' (search path "
+                        "link count: paths starting at any paper), 'spnp' (search path "
+                        "node pair: paths between any two papers). Liu & Lu 2012."
+                    ),
+                },
+                "key_route_search": {
+                    "type": "string",
+                    "enum": ["local", "global"],
+                    "default": "local",
+                    "description": (
+                        "How key edges are extended: 'local' follows the heaviest adjoining "
+                        "edge; 'global' takes the heaviest whole path to and from the key edge."
+                    ),
+                },
+                "robustness": {
+                    "type": "boolean",
+                    "default": True,
+                    "description": (
+                        "Also compute the global main path under all three weights and report "
+                        "the papers they share: a path that survives a change of weight is a "
+                        "finding, one that does not is partly an artefact of the weight."
+                    ),
                 },
                 "inline": INLINE_SCHEMA,
                 "page": {"type": "integer", "default": 1,
@@ -529,8 +558,10 @@ async def _citation_network(arguments: dict) -> list:
     records = [dict(n, scopus_id=n['id'] if source == 'scopus' else None,
                     openalex_id=n['id'] if source == 'openalex' else None)
                for n in nodes.values()]
-    mp = compute_main_path(records)
-    routes = key_route_paths(mp['edges'], k) if k > 0 else None
+    weight = (arguments.get("weight") or 'spc').lower()
+    mp = compute_main_path(records, weight=weight)
+    routes = key_route_paths(mp['edges'], k, arguments.get("key_route_search") or 'local') if k > 0 else None
+    robust = main_path_robustness(records) if arguments.get("robustness", True) else None
     edges = [{'citing': e['target'], 'cited': e['source'], 'spc': e['spc_weight']}
              for e in mp['edges']]
     in_network = {e['citing'] for e in edges} | {e['cited'] for e in edges}
@@ -546,7 +577,10 @@ async def _citation_network(arguments: dict) -> list:
         'edges': edges,
         'main_path': mp['main_path'],
         'global_main_path': mp['global_main_path'],
+        'weight': weight,
+        'backward_main_path': mp.get('backward_main_path') or [],
         'key_routes': routes,
+        'robustness': robust,
         'removed_cycle_edges': mp.get('removed_cycle_edges') or [],
         'reference_fetch_errors': fetch_errors,
         'paper_errors': parse_errors,
@@ -582,7 +616,7 @@ async def _citation_network(arguments: dict) -> list:
     lines += [
         f"Server version: {srv.SERVER_VERSION}",
         f"Corpus JSON: {json_path}",
-        f"Pajek .net (cited → citing, SPC weights): {net_path}",
+        f"Pajek .net (cited → citing, {weight.upper()} weights): {net_path}",
         f"Edge CSV: {csv_path}",
     ]
     recovered = sum(n.get('refs_recovered') or 0 for n in nodes.values())
@@ -620,15 +654,32 @@ async def _citation_network(arguments: dict) -> list:
         lines.append(f"Cycles: removed {len(mp['removed_cycle_edges'])} edge(s) running "
                      "against publication order: " + ', '.join(
                          f"{e['source']}→{e['target']}" for e in mp['removed_cycle_edges'][:10]))
+    W = weight.upper()
     if mp['main_path']:
-        lines.append("Main path (local): " + ' → '.join(_label(nodes, x) for x in mp['main_path']))
-        lines.append("Main path (global): " + ' → '.join(_label(nodes, x) for x in mp['global_main_path']))
+        lines.append(f"Main path ({W}, local forward): " + ' → '.join(_label(nodes, x) for x in mp['main_path']))
+        lines.append(f"Main path ({W}, local backward): "
+                     + ' → '.join(_label(nodes, x) for x in mp.get('backward_main_path') or []))
+        lines.append(f"Main path ({W}, global): " + ' → '.join(_label(nodes, x) for x in mp['global_main_path']))
     else:
         lines.append(f"Main path: {mp.get('note') or 'none'}")
+    if robust and robust['paths'].get('spc'):
+        if robust['identical']:
+            lines.append("Robustness: SPC, SPLC and SPNP give the same global main path.")
+        else:
+            lines.append(f"Robustness: {len(robust['core'])} papers are on the global main path "
+                         f"under all three weights (of {robust['n_union']} on any): "
+                         + (' → '.join(_label(nodes, x) for x in robust['core']) or 'none')
+                         + ". Overlap (Jaccard): " + ', '.join(
+                             f"{pair.upper()} {j}" for pair, j in robust['jaccard'].items()) + ".")
+            for w in WEIGHTS:
+                if w != weight:
+                    lines.append(f"  Global main path under {w.upper()}: "
+                                 + ' → '.join(_label(nodes, x) for x in robust['paths'][w]))
     if routes and routes['routes']:
         n_keys = sum(len(r['key_edges']) for r in routes['routes'])
-        lines.append(f"Key routes: top {n_keys} SPC edges extend into {len(routes['routes'])} "
-                     f"distinct routes ({len(routes['nodes'])} papers, {len(routes['edges'])} edges).")
+        lines.append(f"Key routes ({W}, {routes['search']} search): top {n_keys} edges extend into "
+                     f"{len(routes['routes'])} distinct routes ({len(routes['nodes'])} papers, "
+                     f"{len(routes['edges'])} edges).")
         for r in routes['routes']:
             lines.append(f"  [{r['spc_weight']}] " + ' → '.join(_label(nodes, x) for x in r['path']))
     lines.append("Node key: " + '; '.join(

@@ -5,6 +5,17 @@ are pushed yet (see "Release process" in ROADMAP.md).
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-09-30
+
+### Added
+- `research_fronts`: Louvain communities of a paper set's direct-citation
+  network (as in CitNetExplorer), each with its years, density, core papers
+  (most cited within the set) and distinguishing keywords (count x log
+  lift against the whole set). Reports the front of every global
+  main-path paper, the hops between fronts, and for each hop at how many of
+  the resolutions 0.5, 1.0 and 1.5 it persists. JSON, and Pajek .net with
+  a .clu partition (VOSviewer and Pajek colour by it).
+
 ## [0.21.0] - 2026-09-30
 
 ### Added

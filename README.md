@@ -30,7 +30,7 @@ server, so any MCP client can use it: Claude Desktop, Claude Code, Cursor.
   and see how often and where each one uses it.
 - 🩺 **Honest about access.** One call tells you which tools your current
   Scopus access supports, and why the rest fail.
-- ✅ **Tested.** 493 test functions, CI on Linux, macOS and Windows, and a
+- ✅ **Tested.** 497 test functions, CI on Linux, macOS and Windows, and a
   live check of every tool against the real APIs.
 
 How it compares with the other Scopus MCP servers and with bibliometrics packages (bibliometrix, pybliometrics, VOSviewer, Pajek, ...): **[comparison](docs/comparison.md)**.
@@ -53,7 +53,7 @@ How it compares with the other Scopus MCP servers and with bibliometrics package
 | --- | --- |
 | **Search and records** | `search_scopus` · `search_all` · `search_fulltext` · `get_abstract_details` · `resolve_identifier` · `search_authors` · `get_author_profile` · `get_fulltext` |
 | **Citations** | `get_references` · `get_citing_papers` |
-| **Networks** | `bibliographic_coupling` · `co_citation` · `citation_lineage` · `citation_network` · `historiograph` · `rpys` |
+| **Networks** | `bibliographic_coupling` · `co_citation` · `citation_lineage` · `citation_network` · `historiograph` · `rpys` · `research_fronts` |
 | **Audit** | `resolve_citers` · `citation_context` · `path_transmission` · `index_coverage` |
 | **Bibliometrics** | `publication_counts` · `topic_landscape` · `thematic_evolution` · `get_journal_metrics` · `find_journals` · `get_bibtex` |
 | **Diagnostics and jobs** | `diagnose_connection` · `get_quota_status` · `get_server_info` · `job_status` · `job_result` |

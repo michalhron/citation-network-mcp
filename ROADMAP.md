@@ -8,32 +8,16 @@ _Last updated: 2026-09-30._
 
 ## Status
 
-- 0.9.0: Phase 1 code complete and merged (PRs #2, #3). Remaining Phase 1
-  work is the data harvest (item 2).
-  Claude Desktop is pinned to that branch's tip. See CHANGELOG.md.
-- 14 tools. Scopus: search, `search_all`, abstracts, author profiles,
+- 0.9.0: Phase 1 features complete and merged (PRs #2, #3). See CHANGELOG.md.
+- 17 tools. Scopus: search, `search_all`, abstracts, author profiles,
   identifiers, references, citing papers, full text. Networks:
-  `bibliographic_coupling`, `co_citation`, `citation_lineage` with SPC main path.
-  Ops: `diagnose_connection`, quota, server info.
-- Offline suite of about 270 tests; CI on Ubuntu, macOS and Windows.
+  `bibliographic_coupling`, `co_citation`, `citation_lineage` with SPC main
+  path. Bibliometrics: `publication_counts`, `get_journal_metrics`,
+  `get_bibtex`. Ops: `diagnose_connection`, quota, server info. Search,
+  citations, references, networks and counts also run on OpenAlex.
+- 167 offline test functions (369 cases); CI on Ubuntu, macOS and Windows.
 - Upstream (qwe4559999/scopus-mcp) inactive since 2026-05-17; PRs #11–#14
   unanswered. This fork is maintained independently.
-
-## Deadline that shapes everything: institutional access ends ~end Nov 2026
-
-Michal leaves the institution around the end of November 2026. Every route to
-Scopus subscriber entitlement goes with the affiliation: campus IP, VPN or
-SSH proxy (`SCOPUS_PROXY`), and an insttoken. **Decision (2026-09-30): no
-insttoken request through the library.** The June request to
-apisupport@elsevier.com is abandoned.
-
-After departure, search, citing papers, references, coupling, co-citation and
-lineage stop working on Scopus. Only ID-based metadata keeps working, and only
-if the API key itself survives the affiliation. Two consequences:
-
-1. Harvest the research corpora while entitled (Phase 1, item 2).
-2. OpenAlex becomes the long-term backend (Phase 1, item 3). It also removes
-   the subscription barrier that keeps this server's audience small.
 
 ## Phase 0 — Close out
 
@@ -44,7 +28,7 @@ if the API key itself survives the affiliation. Two consequences:
       Michal merges.
 - [ ] Optional: comment on upstream PRs asking about co-maintainership.
 
-## Phase 1 — Features, ordered by the access deadline
+## Phase 1 — Features
 
 Every new tool gets a live smoke test before it is trusted (see Lessons).
 
@@ -53,13 +37,9 @@ Every new tool gets a live smoke test before it is trusted (see Lessons).
        Live on campus 2026-09-30: all three entitled (REF returned 109 refs;
        subscription full text 53,017 chars). So the June REF refusal was not a
        permanent key limit; most likely it happened off the campus network.
-2. [ ] **Harvest before end of November.** Run the lineage, reference and
-       full-text pulls that "What Inherits?" and "Hype Without a Cycle" need,
-       to disk via the file-output contract. Data work, not code. More urgent
-       than planned: OpenAlex cannot replace Scopus for AIS conference papers
-       (see item 3), and coupling networks built before the 2026-09-30
-       reference-paging fix used at most 40 references per seed, so re-run
-       them.
+2. [ ] **Re-run earlier Scopus coupling networks.** Networks built before the
+       2026-09-30 reference-paging fix used at most 40 references per seed.
+       Data work, not code.
 3. [x] **OpenAlex backend.** `source="openalex"` on search, citing papers,
        references, coupling and co-citation; results carry OpenAlex IDs and
        sources are never mixed. Live 2026-09-30 on four organizing-vision
@@ -82,8 +62,9 @@ Every new tool gets a live smoke test before it is trusted (see Lessons).
 6. [x] **BibTeX export.** `get_bibtex`; publisher metadata via DOI content
        negotiation (errors included: Crossref spells Doreian "Dereian" for
        Hummon & Doreian 1989), generated entries for DOI-less AIS papers.
-- Dropped: Scopus author search. Needs subscriber entitlement that ends in
-  November; OpenAlex author data replaces it.
+7. [ ] **Author search by name.** Scopus Author Search (subscriber
+       entitlement), with OpenAlex authors as the `source="openalex"` option.
+       Today `get_author_profile` needs a Scopus author ID.
 
 ## Phase 2 — Public release (only if outside users are wanted)
 
@@ -99,8 +80,7 @@ Every new tool gets a live smoke test before it is trusted (see Lessons).
 ## Phase 3 — Research pipeline
 
 Orchestrator skill (Session D below) and the lineage-model ideas. Mostly
-skill-side, so independent of distribution. Plan it on the harvested corpora
-and OpenAlex, since Scopus REF view and full text end with the affiliation.
+skill-side, so independent of distribution.
 
 ## Release process
 
@@ -114,7 +94,6 @@ until Phase 2 fixes `publish.yml`.
 # Research design
 
 Carried over verbatim from the 2026-06-24 roadmap and 2026-06-25 addendum.
-Statements about access below predate the 2026-09-30 decision above.
 
 ### Known boundaries (facts, not bugs)
 

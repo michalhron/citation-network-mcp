@@ -7,6 +7,7 @@ from . import (
     diagnostics,
     fronts,
     history,
+    imports,
     networks,
     search,
     themes,
@@ -14,7 +15,7 @@ from . import (
 )
 
 _GROUPS = (search, citations, networks, corpus, history, fronts, themes, transmission,
-           bibliometrics, diagnostics, jobs)
+           bibliometrics, imports, diagnostics, jobs)
 
 TOOLS = [tool for group in _GROUPS for tool in group.TOOLS]
 HANDLERS = {name: handler for group in _GROUPS for name, handler in group.HANDLERS.items()}

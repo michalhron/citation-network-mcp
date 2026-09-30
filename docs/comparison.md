@@ -43,10 +43,10 @@ Corrections are welcome as issues.
 | Institutional token | ✓ | — | ✓ | ✓ | — | — |
 | Access diagnostics | ✓ | — | ✓ | — | — | — |
 | Response cache and retries | ✓ | ✓ | ✓ | — | — | — |
-| Test functions | 497 | 5 | 10 | 0 | 156 | 6 |
+| Test functions | 504 | 5 | 10 | 0 | 156 | 6 |
 | CI on Linux, macOS and Windows | ✓ | — | — | — | — | — |
 | **Project** | | | | | | |
-| Tools | 32 | 5 | 25 | 13 | 12 | 6 |
+| Tools | 33 | 5 | 25 | 13 | 12 | 6 |
 | Commits | 120 | 45 | 5 | 7 | 12 | 6 |
 | Last commit | 2026-09 | 2026-05 | 2026-05 | 2026-06 | 2026-04 | 2026-05 |
 
@@ -108,7 +108,7 @@ version; — not supported. Corrections are welcome.
 | **Data** | | | | | | | |
 | Live Scopus APIs | ✓ | — | ✓ | — | ✓ | — | — |
 | OpenAlex, Semantic Scholar, Crossref | ✓ | partly | — | — | ✓ | ✓ | — |
-| Export files (Web of Science, Scopus, ...) | — (planned) | ✓ | — | ✓ | ✓ | ✓ | network files |
+| Export files (Web of Science, Scopus, ...) | ✓ | ✓ | — | ✓ | ✓ | ✓ | network files |
 | **Citation analysis** | | | | | | | |
 | Coupling and co-citation networks | ✓ | ✓ | — | ✓ | ✓ | ✓ | ✓ |
 | Direct-citation network of a paper set | ✓ | ✓ | — | ✓ | ✓ | ✓ | ✓ |
@@ -157,10 +157,10 @@ version; — not supported. Corrections are welcome.
 
 - **Science mapping.** bibliometrix and VOSviewer draw richer interactive
   maps and cover collaboration networks, which this project does not.
-- **Files and reproducibility.** The packages analyse saved exports, so an
-  analysis can be rerun years later on the same records. This project works
-  from live APIs; its cached responses and written corpus files are the
-  record (export-file import is on the roadmap).
+- **Files and reproducibility.** The packages are built around saved
+  exports. This project imports them too (import_records) but its keyword
+  and reference data otherwise come from live APIs, so a rerun years later
+  may see updated records.
 - **Track record.** Every one of the others has a peer-reviewed software
   paper and years of users. This project is new, and its
   transmission-audit labels are unvalidated heuristics.

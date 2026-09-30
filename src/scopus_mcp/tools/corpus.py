@@ -23,6 +23,7 @@ from ..baskets import (
 )
 from ..completeness import RULE_TEXT, assess, external_reference_counts
 from ..graphs import _make_node_label
+from ..importers import apply_corpus_file
 from ..lineage import WEIGHTS, compute_main_path, key_route_paths, main_path_robustness, write_pajek
 from ..openalex import bare_doi, clean_openalex_work, normalize_title, openalex_work_key, short_id
 from ..output import _output_dir, _query_slug
@@ -120,6 +121,10 @@ TOOLS = [
                     "type": "integer",
                     "description": "With query: how many papers to include (default 300).",
                     "default": 300,
+                },
+                "corpus_file": {
+                    "type": "string",
+                    "description": "A corpus file from import_records, instead of ids or query.",
                 },
                 "scope": SCOPE_SCHEMA,
                 "source": SOURCE_SCHEMA,
@@ -508,6 +513,7 @@ async def collect_corpus(srv, arguments):
     """(nodes, fetch_errors, parse_errors, references) for ids or a query.
     references: cleaned Scopus reference lists, or OpenAlex referenced-work
     IDs, per paper."""
+    arguments = apply_corpus_file(arguments, _source(arguments))
     ids, query = arguments.get("ids"), arguments.get("query")
     if bool(ids) == bool(query):
         raise ValueError("Give either ids or query.")
@@ -540,6 +546,7 @@ def _node_line(key, n, nodes, errors):
 async def _citation_network(arguments: dict) -> list:
     srv = server_module()
     source = _source(arguments)
+    arguments = apply_corpus_file(arguments, source)
     ids, query = arguments.get("ids"), arguments.get("query")
     if bool(ids) == bool(query):
         raise ValueError("Give either ids or query.")

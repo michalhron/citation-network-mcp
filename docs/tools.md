@@ -155,6 +155,7 @@ Direct-citation network within a set of papers, in one call: fetches every paper
 | `ids` | list of string |  | The papers (up to 1000). Use this or query. |
 | `query` | string |  | Search query defining the set, instead of ids. |
 | `max_results` | integer | 300 | With query: how many papers to include (default 300). |
+| `corpus_file` | string |  | A corpus file from import_records, instead of ids or query. |
 | `scope` |  |  | Restrict to journals, by ISSN: a list of ISSNs, or a basket name ('basket_of_eight' / 'ais8': the AIS Senior Scholars' Basket of Eight). ISSNs are used rather than journal names, which Scopus spells inconsistently. |
 | `key_routes` | integer | 10 | Number of top-SPC key edges to extend into key-route main paths (Liu & Lu 2012; default 10, 0 = none). Key edges that extend into the same route are merged. |
 | `check_completeness` | boolean | True | Compare each reference list with an independent count (default true). |
@@ -173,6 +174,7 @@ Garfield's historiograph: the papers most cited within the set (local citation s
 | --- | --- | --- | --- |
 | `ids` | list of string |  | The papers (Scopus IDs/EIDs; with source='openalex', DOIs or OpenAlex IDs). Use this or query. |
 | `query` | string |  | Search query defining the set, instead of ids. |
+| `corpus_file` | string |  | A corpus file from import_records, instead of ids or query. |
 | `max_results` | integer | 300 | With query: how many papers to include (default 300). |
 | `scope` |  |  | Restrict to journals, by ISSN: a list of ISSNs, or a basket name ('basket_of_eight' / 'ais8': the AIS Senior Scholars' Basket of Eight). ISSNs are used rather than journal names, which Scopus spells inconsistently. |
 | `top` | integer | 30 | Papers to draw, by local citation score (default 30). |
@@ -185,6 +187,7 @@ Reference Publication Year Spectroscopy (Marx et al. 2014): counts every cited r
 | --- | --- | --- | --- |
 | `ids` | list of string |  | The papers (Scopus IDs/EIDs; with source='openalex', DOIs or OpenAlex IDs). Use this or query. |
 | `query` | string |  | Search query defining the set, instead of ids. |
+| `corpus_file` | string |  | A corpus file from import_records, instead of ids or query. |
 | `max_results` | integer | 300 | With query: how many papers to include (default 300). |
 | `scope` |  |  | Restrict to journals, by ISSN: a list of ISSNs, or a basket name ('basket_of_eight' / 'ais8': the AIS Senior Scholars' Basket of Eight). ISSNs are used rather than journal names, which Scopus spells inconsistently. |
 | `from_year` | integer | 1900 | Earliest cited year to count (default 1900). |
@@ -199,6 +202,7 @@ Research fronts of a paper set: Louvain communities of its direct-citation netwo
 | --- | --- | --- | --- |
 | `ids` | list of string |  | The papers (Scopus IDs/EIDs; with source='openalex', DOIs or OpenAlex IDs). Use this or query. |
 | `query` | string |  | Search query defining the set, instead of ids. |
+| `corpus_file` | string |  | A corpus file from import_records, instead of ids or query. |
 | `max_results` | integer | 300 | With query: how many papers to include (default 300). |
 | `scope` |  |  | Restrict to journals, by ISSN: a list of ISSNs, or a basket name ('basket_of_eight' / 'ais8': the AIS Senior Scholars' Basket of Eight). ISSNs are used rather than journal names, which Scopus spells inconsistently. |
 | `resolution` | number | 1.0 | Louvain resolution: above 1 gives more, smaller fronts (default 1). |
@@ -288,6 +292,7 @@ Themes of a corpus and how they change over time (Cobo et al. 2011; as in biblio
 | --- | --- | --- | --- |
 | `ids` | list of string |  | The papers (Scopus IDs/EIDs; with source='openalex', DOIs or OpenAlex IDs). Use this or query. |
 | `query` | string |  | Search query defining the set, instead of ids. |
+| `corpus_file` | string |  | A corpus file from import_records, instead of ids or query. |
 | `max_results` | integer | 300 | With query: how many papers to include (default 300). |
 | `scope` |  |  | Restrict to journals, by ISSN: a list of ISSNs, or a basket name ('basket_of_eight' / 'ais8': the AIS Senior Scholars' Basket of Eight). ISSNs are used rather than journal names, which Scopus spells inconsistently. |
 | `cut_years` | list of integer |  | First years of the later periods, e.g. [2005, 2012] gives up to 2004, 2005-2011 and 2012 on. Default: n_periods of similar size. |
@@ -322,6 +327,15 @@ BibTeX entries for a list of papers, written to a .bib file and returned inline.
 | Parameter | Type | Default | Description |
 | --- | --- | --- | --- |
 | `identifiers` | list of string | required | DOIs, Scopus IDs/EIDs, or OpenAlex work IDs (W...). |
+
+### `import_records`
+
+Read saved bibliographic exports into one deduplicated corpus file: Scopus CSV, RIS or BibTeX exports and Web of Science plain-text or tab-delimited exports (format detected). Records are merged across files by Scopus ID, WoS ID, DOI, or title and year. With resolve (default true), records without a Scopus ID (e.g. from Web of Science) are matched in Scopus by DOI, then by exact title and year. Returns the corpus file path and the Scopus IDs. Pass the file as corpus_file to citation_network, rpys, historiograph, research_fronts or thematic_evolution to analyse exactly these records again later (thematic_evolution then reads keywords from the file, with no API calls).
+
+| Parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `paths` | list of string | required | Export files on this computer (.csv, .txt, .ris, .bib, .tsv). |
+| `resolve` | boolean | True | Look up Scopus IDs for records without one (default true). |
 
 ## Diagnostics and jobs
 

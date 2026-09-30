@@ -26,7 +26,7 @@ GROUPS = [
     ('Audit', ['resolve_citers', 'citation_context', 'path_transmission', 'index_coverage']),
     ('Bibliometrics and bibliography', ['publication_counts', 'topic_landscape', 'thematic_evolution',
                                         'get_journal_metrics', 'find_journals',
-                                        'get_bibtex']),
+                                        'get_bibtex', 'import_records']),
     ('Diagnostics and jobs', ['diagnose_connection', 'get_quota_status', 'get_server_info',
                               'job_status', 'job_result']),
 ]

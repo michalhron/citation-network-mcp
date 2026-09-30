@@ -186,9 +186,14 @@ make one release that strengthens a methods section; 5–6 follow.
       2010), a digital-innovation front (Kohli 2019, Wang 2021) and an
       innovation/diffusion/frames front; the Wang 2010 to Kohli 2019 hop is
       the edge path_transmission labels hollow.
-- [ ] **6. Import of Scopus / Web of Science export files**, merged and
-      deduplicated (bibliometrix, metaknowledge): a corpus fixed from a
-      saved search, reproducible without API access on the day. Medium.
+- [x] **6. Import of Scopus / Web of Science export files** (bibliometrix,
+      metaknowledge; 0.23.0 `import_records`). Scopus CSV/RIS/BibTeX and
+      WoS plain text/tab-delimited, deduplicated across files, WoS records
+      matched to Scopus by DOI then title and year; the corpus file feeds
+      every corpus tool (`corpus_file`), and thematic_evolution runs on it
+      without API calls.
+
+All six items done (0.19.0 to 0.23.0).
 
 Deliberately left out: Lotka and Bradford laws (find_journals and
 topic_landscape cover venue quality), a point-and-click interface (the

@@ -1,0 +1,27 @@
+FN Clarivate Analytics Web of Science
+VR 1.0
+PT J
+AU Wang, P
+TI Chasing the hottest IT: Effects of information technology fashion on
+   organizations
+SO MIS QUARTERLY
+DE information technology fashion; management fashion; diffusion
+ID INNOVATION
+AB We study IT fashion.
+PY 2010
+DI 10.2307/20721415
+UT WOS:000275223300004
+ER
+
+PT J
+AU Kohli, R
+   Melville, NP
+TI Digital innovation: A review and synthesis
+SO INFORMATION SYSTEMS JOURNAL
+DE digital innovation; review
+PY 2019
+DI 10.1111/isj.12193
+UT WOS:000453800100001
+ER
+
+EF

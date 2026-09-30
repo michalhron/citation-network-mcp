@@ -1,8 +1,8 @@
 {
   "manifest_version": "0.4",
-  "name": "scopus-mcp",
-  "display_name": "Scopus MCP",
-  "version": "0.10.0",
+  "name": "citation-network-mcp",
+  "display_name": "Citation Network MCP",
+  "version": "0.11.0",
   "description": "Citation-network analysis on Scopus or OpenAlex: search, citations, coupling, co-citation, lineages, bibliometrics.",
   "long_description": "Search the literature, trace who cites whom across generations, map research fronts and intellectual bases, and get publication counts, journal metrics and BibTeX. Scopus by default; OpenAlex needs no subscription.",
   "author": {
@@ -11,11 +11,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/michalhron/scopus-mcp"
+    "url": "https://github.com/michalhron/citation-network-mcp"
   },
-  "homepage": "https://github.com/michalhron/scopus-mcp",
-  "documentation": "https://github.com/michalhron/scopus-mcp#readme",
-  "support": "https://github.com/michalhron/scopus-mcp/issues",
+  "homepage": "https://github.com/michalhron/citation-network-mcp",
+  "documentation": "https://github.com/michalhron/citation-network-mcp#readme",
+  "support": "https://github.com/michalhron/citation-network-mcp/issues",
   "icon": "assets/icon.png",
   "server": {
     "type": "uv",
@@ -26,7 +26,7 @@
         "run",
         "--directory",
         "${__dirname}",
-        "scopus-mcp"
+        "citation-network-mcp"
       ],
       "env": {
         "SCOPUS_API_KEY": "${user_config.scopus_api_key}",

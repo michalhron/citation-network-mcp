@@ -5,6 +5,25 @@ are pushed yet (see "Release process" in ROADMAP.md).
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-09-30
+
+### Changed
+- Renamed to **citation-network-mcp** (repository
+  `michalhron/citation-network-mcp`; the old URL redirects). The new name
+  describes what sets the project apart and no longer implies Scopus only.
+  Kept for compatibility: the `scopus-mcp` command (alias), the `scopus_mcp`
+  import package, `SCOPUS_*` settings, the `scopus-mcp` secret-store service,
+  and the cache and output folders.
+- Claude Desktop extension and Claude Code plugin renamed to match
+  (`citation-network-mcp@michalhron`); reinstall them under the new name.
+- Publishing: on a version tag, `publish.yml` uploads to PyPI with trusted
+  publishing and lists the server in the MCP registry
+  (`io.github.michalhron/citation-network-mcp`).
+
+### Removed
+- Upstream's Chinese README, its Chinese prompt guide (replaced by an English
+  `docs/examples.md`) and its outdated `MCP_tool_config.json`.
+
 ## [0.10.0] - 2026-09-30
 
 ### Changed

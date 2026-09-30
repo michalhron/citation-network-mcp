@@ -70,16 +70,22 @@ Every new tool gets a live smoke test before it is trusted (see Lessons).
 
 ## Phase 2 — Public release (only if outside users are wanted)
 
-- [ ] Choose a package name; `scopus-mcp` on PyPI belongs to upstream. Update
-      authors, URLs and `mcp-name`; keep MIT and credit upstream.
-- [x] `publish.yml` made manual-only (2026-09-30); version tags now drive
-      `release.yml`, which publishes the Claude Desktop extension. Re-enable
-      PyPI on tags once the package has its own name.
+- [x] Package name: `citation-network-mcp`; repository renamed to match
+      (2026-09-30). Authors, URLs and `mcp-name` updated; MIT kept, upstream
+      credited.
+- [ ] Detach the repository from upstream's fork network (GitHub settings,
+      Michal).
+- [ ] Configure the PyPI trusted publisher (Michal), then tag v0.11.0.
+- [x] `publish.yml` publishes to PyPI (trusted publishing) and the MCP
+      registry on version tags, under the new name.
 - [ ] Split `server.py` and `utils.py` (1,200+ lines each) into tool modules.
 - [x] README around the differentiator (done 2026-09-30, ahead of Phase 2).
-- [ ] Update or drop README_CN (still the older upstream text).
+- [x] Dropped README_CN and the Chinese prompt guide; English examples in
+      `docs/examples.md`.
 - [x] Claude Desktop extension and Claude Code plugin (0.10.0).
-- [ ] Publish: PyPI and MCP registry (`server.json`), after the rename.
+- [ ] First PyPI and MCP registry release (v0.11.0), then switch install
+      instructions and the Claude Code plugin from GitHub to `uvx
+      citation-network-mcp`.
 
 ## Phase 3 — Research pipeline
 

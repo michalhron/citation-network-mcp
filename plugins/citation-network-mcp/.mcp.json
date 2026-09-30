@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "citation-network": {
+      "command": "uvx",
+      "args": [
+        "--from",
+        "git+https://github.com/michalhron/citation-network-mcp.git",
+        "citation-network-mcp"
+      ]
+    }
+  }
+}

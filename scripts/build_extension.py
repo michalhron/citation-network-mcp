@@ -2,9 +2,9 @@
 
     uv run python scripts/build_extension.py
 
-Fills manifest.json's version and tool list, and the Claude Code plugin's
-version, from the code; validates the manifest;
-and packs dist/scopus-mcp-<version>.mcpb with the official mcpb CLI (run
+Fills manifest.json's version and tool list, and the versions in the Claude
+Code plugin and the MCP registry entry (server.json), from the code; validates the manifest;
+and packs dist/citation-network-mcp-<version>.mcpb with the official mcpb CLI (run
 through npx, so Node.js is required). tests/test_extension.py fails when the
 committed manifest.json is out of date; running this script fixes that.
 """
@@ -47,7 +47,8 @@ async def _code_tools():
         await server.openalex.close()
 
 
-PLUGIN_JSON = ROOT / 'plugins' / 'scopus-mcp' / '.claude-plugin' / 'plugin.json'
+PLUGIN_JSON = ROOT / 'plugins' / 'citation-network-mcp' / '.claude-plugin' / 'plugin.json'
+SERVER_JSON = ROOT / 'server.json'  # MCP registry entry
 
 
 def _write_json(path: Path, data: dict) -> None:
@@ -62,13 +63,18 @@ def sync_manifest() -> str:
     _write_json(path, manifest_with_code(manifest, __version__, asyncio.run(_code_tools())))
     plugin = json.loads(PLUGIN_JSON.read_text(encoding='utf-8'))
     _write_json(PLUGIN_JSON, {**plugin, 'version': __version__})
+    registry = json.loads(SERVER_JSON.read_text(encoding='utf-8'))
+    registry['version'] = __version__
+    for package in registry['packages']:
+        package['version'] = __version__
+    _write_json(SERVER_JSON, registry)
     return __version__
 
 
 def main():
     version = sync_manifest()
     subprocess.run([*MCPB, 'validate', str(ROOT / 'manifest.json')], check=True)
-    out = ROOT / 'dist' / f'scopus-mcp-{version}.mcpb'
+    out = ROOT / 'dist' / f'citation-network-mcp-{version}.mcpb'
     out.parent.mkdir(exist_ok=True)
     subprocess.run([*MCPB, 'pack', str(ROOT), str(out)], check=True)
     print(f"built {out}")
